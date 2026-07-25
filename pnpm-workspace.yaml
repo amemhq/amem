@@ -15,3 +15,18 @@ allowBuilds:
 overrides:
   adm-zip: '>=0.6.0'
   esbuild: '>=0.28.1'
+  # Both sit inside the range their parent already declares (fastify wants
+  # find-my-way ^9.6.0), so this only forces the lockfile forward to the patched
+  # release rather than changing what the dependency tree supports.
+  find-my-way: '>=9.7.0' # GHSA: HTTP/2 DDoS
+  # Upper bound matters: every parent (ajv, @fastify/ajv-compiler,
+  # fast-json-stringify) declares ^3, and an unbounded '>=3.1.4' resolves to
+  # 4.x — outside all of them. The patch exists in the 3.x line; stay there.
+  fast-uri: '>=3.1.4 <4' # GHSA: host confusion via literal backslash authority
+  # sharp ships with @huggingface/transformers, which declares ^0.34.5 — so the
+  # patched 0.35.0 sits OUTSIDE its range and this override is not free. It is
+  # taken deliberately: transformers pulls sharp for IMAGE preprocessing, and
+  # amem only ever runs the text feature-extraction pipeline, so the surface is
+  # unused here — but it still ships in the tree and gets scanned. Verified by
+  # running the real embedding path against the override (see PR).
+  sharp: '>=0.35.0' # GHSA: inherited libvips CVE-2026-33327 / CVE-2026-3xxxx
