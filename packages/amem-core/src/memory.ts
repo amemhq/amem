@@ -153,9 +153,15 @@ export async function addMemory(
   opts?: {
     scope?: 'private' | 'shared'
     storageCtx?: StorageContext
+    /**
+     * Story 44: who this memory is about. Empty (the default) means it is about
+     * the world or the agent itself, and stays visible whoever is present.
+     */
+    subjects?: string[]
   }
 ): Promise<string> {
   const scope = opts?.scope ?? 'private'
+  const subjects = opts?.subjects ?? []
   const ctx = opts?.storageCtx ?? defaultCtx()
 
   // ── Story 31: Quality gate ──────────────────────────────────────────────────
@@ -218,6 +224,7 @@ export async function addMemory(
 
   const note: MemoryNote = {
     id: uuidv4(),
+    subjects,
     content,
     timestamp: new Date().toISOString(),
     keywords,
@@ -451,9 +458,12 @@ export async function addEpisodic(
   opts?: {
     scope?: 'private' | 'shared'
     storageCtx?: StorageContext
+    /** Story 44: who this episode is about. Empty = world/self. */
+    subjects?: string[]
   }
 ): Promise<string> {
   const scope = opts?.scope ?? 'private'
+  const subjects = opts?.subjects ?? []
   const ctx = opts?.storageCtx ?? defaultCtx()
 
   const quality = checkQuality(content)
@@ -468,6 +478,7 @@ export async function addEpisodic(
 
   const note: MemoryNote = {
     id: uuidv4(),
+    subjects,
     content,
     timestamp: now,
     keywords: [],
@@ -526,9 +537,16 @@ export async function searchMemory(
     topicsFilter?: string[]
     // Story 32: optional storage context for mode B isolation
     storageCtx?: StorageContext
+    /**
+     * Story 44: scope retrieval to one person. Returns memories that name them
+     * plus memories that name nobody (world facts, facts about the agent).
+     * Omitted = no person scoping, i.e. today's behaviour.
+     */
+    subject?: string
   }
 ): Promise<SearchResult[]> {
   const useBfs = opts?.useBfs !== false // default true
+  const subject = opts?.subject
   const bfsSimThreshold = opts?.bfsSimThreshold ?? 0.25 // Story 22 default
   const ctx = opts?.storageCtx ?? defaultCtx()
   const total = await ctx.countNotes(agentId)
@@ -537,10 +555,13 @@ export async function searchMemory(
   // Embedding retrieval
   const queryEmbedding = await encode(query)
   const n = Math.min(Math.max(topK * 4, 20), total)
-  const embResults = await ctx.queryByEmbedding(queryEmbedding, n, agentId, 0.0)
+  const embResults = await ctx.queryByEmbedding(queryEmbedding, n, agentId, 0.0, subject)
 
   // BM25 retrieval
-  const allNotes = await ctx.listNotes(agentId)
+  // Scope this too: it feeds BM25 AND the BFS neighbourhood map, so leaving it
+  // unscoped would leak another person's memories through keyword search or a
+  // link expansion even though the vector path was filtered.
+  const allNotes = await ctx.listNotes(agentId, subject)
   const bm25State = buildBM25(allNotes)
   const queryTokens = simpleTokenize(query)
   const bm25Ranked = bm25Score(bm25State, queryTokens).slice(0, n)

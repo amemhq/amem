@@ -60,6 +60,44 @@ near-identical. **Raise it when running a cheaper or smaller model** — those a
 likelier to mis-pick, and the cost of being strict is a duplicate rather than a
 destroyed memory.
 
+### Memories about different people
+
+`agent_id` says **whose memory store** a note lives in. It does not say **who the
+note is about** — and for a companion that meets several people, those are
+different questions. One character, one store, many people it remembers.
+
+Every memory carries `subjects`, a list of who it concerns:
+
+| `subjects` | meaning | who sees it |
+| :--- | :--- | :--- |
+| `[]` *(default)* | a fact about the world, or about the character itself | everyone |
+| `["alex"]` | about one person | only when scoped to them |
+| `["alex", "sam"]` | a shared experience | either of them |
+
+An array rather than a single value because shared experience is the normal case
+for a companion — *"we beat the dragon together"* belongs to both people, and
+splitting it into two near-identical memories would just give the deduplicator
+something to merge back.
+
+```
+memory_add   { text: "alex prefers mining at night", subjects: ["alex"] }
+memory_add   { text: "we beat the dragon together",  subjects: ["alex","sam"] }
+memory_add   { text: "the server spawn is a desert" }        // about nobody
+
+memory_search { query: "mining", subject: "alex" }
+  → alex's own memories + shared ones + world facts.  Never sam's.
+```
+
+Scoping happens in the vector-store query, not after the fact, so an out-of-scope
+memory is never fetched at all. Both retrieval paths — semantic and keyword — are
+scoped together.
+
+::: tip Nothing changes until you use it
+`subjects` defaults to empty, so every memory written before this existed is a
+world fact and stays visible exactly as before. Omit `subject` on a search and
+you get today's behaviour.
+:::
+
 ### Contradiction sweep
 
 The per-turn CRUD decision runs on the fast model. That is safe — the update

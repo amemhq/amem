@@ -93,6 +93,20 @@ export interface MemoryNote {
   // renderable as ONE decision instead of two disconnected entries.
   conflicts_with?: string[]
   conflict_reason?: string
+  // ── Story 44: who this memory is ABOUT ──────────────────────────────────────
+  // Distinct from `agent_id`/`owner`, which say whose STORE it lives in. A
+  // companion meeting several players needs both: one memory store, many people
+  // it holds memories about.
+  //
+  //   []       a fact about the world, or about the agent itself — always visible
+  //   [a]      about one person — surfaced only when that person is present
+  //   [a, b]   a shared experience — surfaced for either of them
+  //
+  // An array rather than a single value because shared experience is the normal
+  // case for a companion ("we fought the dragon together"), not an edge case.
+  // Defaulting to [] keeps every pre-existing memory a world fact, so behaviour
+  // is unchanged until subjects are actually used.
+  subjects: string[]
   // ── Story 31: quality scoring ──────────────────────────────────────────────
   ephemeral: boolean // true when content contains temporal signal words
   low_quality: boolean // true when content is too short or otherwise low-quality
@@ -196,6 +210,11 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
     field_name: 'topics',
     field_schema: 'keyword',
   })
+  // Story 44: index subjects so "memories about this person" is an index lookup.
+  await qdrant('PUT', `/collections/${col}/index`, {
+    field_name: 'subjects',
+    field_schema: 'keyword',
+  })
   markReady()
 }
 
@@ -232,6 +251,7 @@ function noteToPoint(note: MemoryNote) {
       conflict: note.conflict ?? false,
       conflicts_with: note.conflicts_with ?? [],
       conflict_reason: note.conflict_reason ?? '',
+      subjects: note.subjects ?? [],
       // 31
       ephemeral: note.ephemeral ?? false,
       low_quality: note.low_quality ?? false,
@@ -296,6 +316,9 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
       ? (p.conflicts_with as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
     conflict_reason: typeof p.conflict_reason === 'string' ? p.conflict_reason : '',
+    subjects: Array.isArray(p.subjects)
+      ? (p.subjects as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [],
     // 31
     ephemeral: p.ephemeral === true,
     low_quality: p.low_quality === true,
@@ -307,16 +330,31 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
 }
 
 // ── Agent filter ──────────────────────────────────────────────────────────────
-function agentFilter(agentId: string) {
+function agentFilter(agentId: string, subject?: string) {
+  const must: unknown[] = [
+    {
+      should: [
+        { key: 'agent_id', match: { value: agentId } },
+        { key: 'agent_id', match: { value: 'shared' } },
+      ],
+    },
+  ]
+
+  // Story 44: scope to one person when asked. A memory is in scope if it names
+  // them, OR if it names nobody — an empty `subjects` is a fact about the world
+  // or about the agent itself, which stays relevant whoever is present. A shared
+  // experience names several people and so surfaces for each of them.
+  //
+  // Omitting `subject` means "no person scoping", which is what every existing
+  // caller does and what keeps behaviour unchanged.
+  if (subject !== undefined) {
+    must.push({
+      should: [{ key: 'subjects', match: { value: subject } }, { is_empty: { key: 'subjects' } }],
+    })
+  }
+
   return {
-    must: [
-      {
-        should: [
-          { key: 'agent_id', match: { value: agentId } },
-          { key: 'agent_id', match: { value: 'shared' } },
-        ],
-      },
-    ],
+    must,
     must_not: [{ key: 'is_active', match: { value: false } }],
   }
 }
@@ -332,14 +370,24 @@ function agentFilter(agentId: string) {
 function makeCrud(collectionName: string, modeBIsolated = false) {
   const col = collectionName
 
-  function scopedAgentFilter(agentId: string) {
+  function scopedAgentFilter(agentId: string, subject?: string) {
     if (modeBIsolated) {
-      // Mode B: collection is already agent-isolated; just exclude inactive notes
+      // Mode B: the collection is already agent-isolated, so no agent clause is
+      // needed — but subject scoping still applies. Mode B separates AGENTS;
+      // `subjects` separates the PEOPLE one agent holds memories about, and a
+      // single agent in its own collection still meets several of them.
+      const must: unknown[] = []
+      if (subject !== undefined) {
+        must.push({
+          should: [{ key: 'subjects', match: { value: subject } }, { is_empty: { key: 'subjects' } }],
+        })
+      }
       return {
+        ...(must.length > 0 && { must }),
         must_not: [{ key: 'is_active', match: { value: false } }],
       }
     }
-    return agentFilter(agentId)
+    return agentFilter(agentId, subject)
   }
 
   return {
@@ -469,7 +517,8 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       embedding: number[],
       topK: number,
       agentId: string,
-      scoreThreshold = 0.0
+      scoreThreshold = 0.0,
+      subject?: string
     ): Promise<QueryResult[]> {
       await ensureCollection(col)
       const result = (await qdrant('POST', `/collections/${col}/points/search`, {
@@ -478,7 +527,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         with_payload: true,
         with_vector: true,
         score_threshold: scoreThreshold,
-        filter: scopedAgentFilter(agentId),
+        filter: scopedAgentFilter(agentId, subject),
       })) as Array<{ id: string; score: number; payload: Record<string, unknown>; vector: number[] }>
 
       const queryResults = result.map((r) => ({
@@ -516,14 +565,14 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       return queryResults
     },
 
-    async listNotes(agentId?: string): Promise<MemoryNote[]> {
+    async listNotes(agentId?: string, subject?: string): Promise<MemoryNote[]> {
       await ensureCollection(col)
       const body: Record<string, unknown> = {
         with_payload: true,
         with_vector: true,
         limit: 10000,
       }
-      if (agentId) body.filter = scopedAgentFilter(agentId)
+      if (agentId) body.filter = scopedAgentFilter(agentId, subject)
 
       const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
         points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
@@ -661,13 +710,14 @@ export async function queryByEmbedding(
   embedding: number[],
   topK: number,
   agentId: string,
-  scoreThreshold = 0.0
+  scoreThreshold = 0.0,
+  subject?: string
 ): Promise<QueryResult[]> {
-  return makeCrud(getCollection()).queryByEmbedding(embedding, topK, agentId, scoreThreshold)
+  return makeCrud(getCollection()).queryByEmbedding(embedding, topK, agentId, scoreThreshold, subject)
 }
 
-export async function listNotes(agentId?: string): Promise<MemoryNote[]> {
-  return makeCrud(getCollection()).listNotes(agentId)
+export async function listNotes(agentId?: string, subject?: string): Promise<MemoryNote[]> {
+  return makeCrud(getCollection()).listNotes(agentId, subject)
 }
 
 export async function deleteNote(id: string): Promise<void> {
