@@ -1,5 +1,12 @@
 # @heichaowo/amem-api
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`61f46a8`](https://github.com/heichaowo/amem/commit/61f46a85b0434157b35391d2d6ff6d934908534b), [`d903552`](https://github.com/heichaowo/amem/commit/d903552e9f6d8751c712c2383046b69c9c1ae75a), [`9b22d73`](https://github.com/heichaowo/amem/commit/9b22d73bed52feb12b40e60db807f58cd0e827fd), [`8da3791`](https://github.com/heichaowo/amem/commit/8da37918c2c7d9f23dfee727ad19cf1efee3c0c3), [`634d280`](https://github.com/heichaowo/amem/commit/634d2806399fea8b6ae5afbbf608d1caf37d2a07), [`f52a083`](https://github.com/heichaowo/amem/commit/f52a08318bdfdf3a61d0855209ad766da39e9a28), [`78f2190`](https://github.com/heichaowo/amem/commit/78f21904bc646c215a87427dfe2e845a637c5369), [`a7e34f7`](https://github.com/heichaowo/amem/commit/a7e34f7579ff07eca92494846ff7833dfbb70c1b), [`c4f3e91`](https://github.com/heichaowo/amem/commit/c4f3e91ac51f35c0c1e72781232c154b7ada7328)]:
+  - @heichaowo/amem-core@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes

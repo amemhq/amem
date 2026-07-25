@@ -1,6 +1,6 @@
 {
   "name": "@heichaowo/amem-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The agentic memory engine — notes that construct, link, and evolve like a Zettelkasten, on Qdrant + Transformers.js. No Python. Framework-agnostic.",
   "license": "MIT",
   "homepage": "https://amem.owo.lc",
