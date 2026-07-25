@@ -618,8 +618,9 @@ function register(api: {
 
 const plugin = definePluginEntry({
   id: 'openclaw-amem',
-  name: 'Memory (A-MEM v2)',
-  description: 'A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required.',
+  name: 'amem — agentic memory',
+  description:
+    'Agentic memory for OpenClaw — memories evolve, link into a graph, and stay separated per agent and per person.',
   register,
 })
 

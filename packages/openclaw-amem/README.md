@@ -1,16 +1,18 @@
 # openclaw-amem
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="A-MEM Logo" />
+  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="amem logo" />
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](../../LICENSE)
 [![npm](https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/openclaw-amem)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
 
-**A-MEM agentic memory backend for [OpenClaw](https://github.com/openclaw/openclaw)** — memories **evolve**, not just accumulate.
+**Agentic memory for [OpenClaw](https://github.com/openclaw/openclaw)** — memories **evolve**, not just accumulate.
 
-The first open-source A-MEM memory plugin for OpenClaw: dynamic graph linking, hybrid (BM25 + dense) retrieval with 2-hop graph expansion, and LLM-driven memory evolution. Backed by Qdrant + local Transformers.js. **No Python required.**
+Notes link themselves into a graph and are retrieved by a hybrid of BM25 and dense search with 2-hop graph expansion. Memories stay separated **per agent** and **per person**, so one character can remember several people without mixing them up. Backed by Qdrant + local Transformers.js — and it runs fine on a cheap or local model. **No Python required.**
+
+Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110).
 
 > 🧠 The memory **engine** lives in **[`amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
