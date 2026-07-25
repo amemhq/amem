@@ -606,6 +606,18 @@ export interface ConflictPair {
   a: number
   b: number
   reason: string
+  /**
+   * Which side the model judged to be SUPERSEDED — the one no longer true.
+   * `null` when it could not tell, which is common and must be respected.
+   *
+   * This is deliberately a semantic judgement rather than a timestamp
+   * comparison. A note carries only its INGESTION time, and the two clocks come
+   * apart constantly: "back in 2019 I was vegetarian", written today, is newer
+   * on the wall clock and older in fact. The evidence for which fact is current
+   * lives in the TEXT ("moved last month", "used to", "switched to"), which is
+   * exactly what the model is already reading.
+   */
+  supersededIndex: number | null
 }
 
 /**
@@ -649,10 +661,17 @@ export async function llmConflictScan(contents: string[]): Promise<ConflictPair[
       const key = a < b ? `${a}:${b}` : `${b}:${a}`
       if (seen.has(key)) continue
       seen.add(key)
+      // Only accept a superseded marker that names one of THIS pair. Anything
+      // else (a hallucinated index, a third note, a non-number) means "unknown",
+      // which callers must treat as "do not retire".
+      const rawSup = (item as { superseded?: unknown }).superseded
+      const supersededIndex = rawSup === a || rawSup === b ? (rawSup as number) : null
+
       pairs.push({
         a,
         b,
         reason: typeof (item as { reason?: unknown }).reason === 'string' ? (item as { reason: string }).reason : '',
+        supersededIndex,
       })
     }
     return pairs

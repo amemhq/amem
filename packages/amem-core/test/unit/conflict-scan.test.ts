@@ -42,7 +42,7 @@ describe('llmConflictScan', () => {
 
     const pairs = await llmConflictScan(THREE)
 
-    expect(pairs).toEqual([{ a: 0, b: 2, reason: 'diet: vegetarian vs ate steak' }])
+    expect(pairs).toEqual([{ a: 0, b: 2, reason: 'diet: vegetarian vs ate steak', supersededIndex: null }])
   })
 
   it('sends the whole batch in one numbered prompt, not pairwise', async () => {
@@ -119,5 +119,40 @@ describe('llmConflictScan', () => {
     const prompt = anthropicCreate.mock.calls[0][0].messages[0].content
     expect(prompt).toMatch(/Additive facts/i)
     expect(prompt).toContain('Scout')
+  })
+})
+
+describe('llmConflictScan — the superseded marker', () => {
+  it('carries through a superseded index that names one side of the pair', async () => {
+    anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":0,"reason":"r"}]'))
+    const { llmConflictScan } = await loadLlm()
+
+    expect((await llmConflictScan(THREE))[0].supersededIndex).toBe(0)
+  })
+
+  it('treats a superseded index outside the pair as unknown, not as a target', async () => {
+    // Naming a third note is not an answer about THIS pair. Accepting it would
+    // retire a memory the model was not even talking about.
+    anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":1,"reason":"r"}]'))
+    const { llmConflictScan } = await loadLlm()
+
+    expect((await llmConflictScan(THREE))[0].supersededIndex).toBeNull()
+  })
+
+  it('accepts an explicit null as "cannot tell"', async () => {
+    anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":null,"reason":"r"}]'))
+    const { llmConflictScan } = await loadLlm()
+
+    expect((await llmConflictScan(THREE))[0].supersededIndex).toBeNull()
+  })
+
+  it('asks the model to judge from wording, and warns the list is not chronological', async () => {
+    anthropicCreate.mockResolvedValue(reply('[]'))
+    const { llmConflictScan } = await loadLlm()
+
+    await llmConflictScan(THREE)
+    const prompt = anthropicCreate.mock.calls[0][0].messages[0].content
+    expect(prompt).toMatch(/NOT listed in chronological order/i)
+    expect(prompt).toMatch(/used to|back in/i)
   })
 })

@@ -144,9 +144,20 @@ What does NOT count — be strict, these are the common false positives:
 - Merely similar or related topics
 - Different contexts (likes coffee at work, tea at home)
 
-Return ONLY a JSON array. Empty array if nothing genuinely contradicts:
-[{"a": 0, "b": 3, "reason": "one short sentence naming the incompatible attribute"}]
+For each contradicting pair, also say which one is SUPERSEDED — the one that is
+no longer true. Judge this from the WORDING, not from any assumed order: phrases
+like "used to", "back in 2019", "moved last month", "switched to" tell you which
+statement describes the past. The memories are NOT listed in chronological order,
+and the number does not imply age.
 
+If you cannot tell which one is superseded, set it to null. That is a normal and
+useful answer — say null rather than guessing, because a wrong guess retires a
+memory that is still true.
+
+Return ONLY a JSON array. Empty array if nothing genuinely contradicts:
+[{"a": 0, "b": 3, "superseded": 0, "reason": "one short sentence naming the incompatible attribute"}]
+
+"superseded" must be either the value of "a", the value of "b", or null.
 Use the numbers shown. Report a pair once. Prefer returning nothing over guessing.`,
 }
 
@@ -255,9 +266,17 @@ ${numberedNotes}
 - 只是主题相似或相关
 - 场景不同（在公司喝咖啡，在家喝茶）
 
-只返回 JSON 数组。没有真正矛盾就返回空数组：
-[{"a": 0, "b": 3, "reason": "一句话说明是哪个属性互斥"}]
+对每一对矛盾，还要指出哪一条是**已失效的**（不再为真的那条）。请从**措辞**判断，不要假设顺序：
+「以前」「2019 年那会儿」「上个月搬了」「改用了」这类说法能告诉你哪条描述的是过去。
+这些记忆**不是按时间顺序排列的**，编号也不代表新旧。
 
+如果无法判断哪条已失效，就填 null。这是一个**正常且有用**的回答 —— 宁可填 null 也不要猜，
+因为猜错会让一条**仍然为真**的记忆被停用。
+
+只返回 JSON 数组。没有真正矛盾就返回空数组：
+[{"a": 0, "b": 3, "superseded": 0, "reason": "一句话说明是哪个属性互斥"}]
+
+"superseded" 只能是 "a" 的值、"b" 的值，或 null。
 使用上面显示的编号。同一对只报一次。**宁可不报，也不要猜。**`,
 }
 

@@ -95,19 +95,19 @@ describe('conflictSweep — review mode (default)', () => {
 })
 
 describe('conflictSweep — auto mode', () => {
-  it('retires the OLDER note of the pair, never the newer', async () => {
-    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet' }])
+  it('retires the side the MODEL named as superseded', async () => {
+    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: 0 }])
     const ctx = makeCtx([OLD, NEW])
 
     const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
 
     expect(res.retired).toBe(1)
     expect(ctx.invalidateNote).toHaveBeenCalledOnce()
-    expect(vi.mocked(ctx.invalidateNote).mock.calls[0][0]).toBe('aaa') // the older
+    expect(vi.mocked(ctx.invalidateNote).mock.calls[0][0]).toBe('aaa') // the one the model named
   })
 
   it('still marks both notes in auto mode, so the decision stays auditable', async () => {
-    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet' }])
+    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: 0 }])
     const ctx = makeCtx([OLD, NEW])
 
     await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
@@ -115,7 +115,7 @@ describe('conflictSweep — auto mode', () => {
   })
 
   it('is opt-in: AMEM_CONFLICT_MODE selects it, and anything else means review', async () => {
-    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'd' }])
+    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'd', supersededIndex: 0 }])
 
     vi.stubEnv('AMEM_CONFLICT_MODE', 'auto')
     const ctxAuto = makeCtx([OLD, NEW])
@@ -150,5 +150,34 @@ describe('conflictSweep — what it refuses to scan', () => {
 
     // Personal has two notes; Technical has one and is skipped entirely.
     expect(conflictScan).toHaveBeenCalledOnce()
+  })
+})
+
+describe('conflictSweep — the wall clock is not evidence', () => {
+  it('retires nothing when the model cannot tell which side is superseded', async () => {
+    // The safe half of auto mode. The pair is still marked for review; it is the
+    // RETIREMENT that is withheld, because a guess here silences a true memory.
+    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: null }])
+    const ctx = makeCtx([OLD, NEW])
+
+    const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
+
+    expect(res.pairsFound).toBe(1)
+    expect(res.retired).toBe(0)
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
+    expect(ctx.patchNotePayload).toHaveBeenCalledTimes(2) // still visible for review
+  })
+
+  it('retires the note written LATER when that is the one the model calls superseded', async () => {
+    // The case an ingestion-time heuristic gets exactly backwards: a memory about
+    // the past ("back in 2019 I was vegetarian") recorded today is the NEWER row
+    // and the OLDER fact. Retiring by timestamp would silence the current one.
+    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: 1 }])
+    const ctx = makeCtx([OLD, NEW])
+
+    const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
+
+    expect(res.retired).toBe(1)
+    expect(vi.mocked(ctx.invalidateNote).mock.calls[0][0]).toBe('bbb') // the LATER-written note
   })
 })

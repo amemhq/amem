@@ -77,12 +77,19 @@ conflict can be reviewed as **one decision** rather than two disconnected entrie
 | `AMEM_CONFLICT_MODE` | What happens |
 | :--- | :--- |
 | `review` *(default)* | Both notes are flagged and appear in the quality review batch. Nothing is removed. You decide. |
-| `auto` | As above, **and** the older note of each pair is retired automatically. |
+| `auto` | As above, **and** the note the model identifies as *superseded* is retired automatically. If it cannot tell which one that is, nothing is retired. |
 
 ::: danger Read this before enabling `auto`
 Even a strong model is only around **55%** accurate at spotting implicit
 contradictions. In `auto` mode that means roughly **two in five retirements will
 silence a memory that was still true**.
+
+Which side gets retired is the model's *semantic* judgement, never a timestamp
+comparison. A note records when it was **written down**, not when the fact became
+true, and the two come apart constantly — "back in 2019 I was vegetarian",
+recorded today, is the newer row and the older fact. Retiring by write time would
+get that case exactly backwards. When the model cannot tell which side is
+superseded, the pair is flagged for review and **nothing is retired**.
 
 The retirement is a soft delete — the note and its text survive and can be
 restored — but for a system answering in real time, "recoverable" only helps once

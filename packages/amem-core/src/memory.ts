@@ -1069,7 +1069,7 @@ export async function conflictSweep(
       if (batch.length < 2) continue
 
       const pairs = await llmConflictScan(batch.map((n) => n.content))
-      for (const { a, b, reason } of pairs) {
+      for (const { a, b, reason, supersededIndex } of pairs) {
         const noteA = batch[a]
         const noteB = batch[b]
         if (!noteA || !noteB) continue
@@ -1092,12 +1092,23 @@ export async function conflictSweep(
         log(`[conflict] ${category}: ${noteA.id.slice(0, 8)} ↔ ${noteB.id.slice(0, 8)} — ${reason}`)
 
         if (mode === 'auto') {
-          // Retire the older side. Soft delete: the note and its text survive.
-          const older = Date.parse(noteA.timestamp) <= Date.parse(noteB.timestamp) ? noteA : noteB
-          const ok = await ctx.invalidateNote(older.id, agentId)
-          if (ok) {
-            retired++
-            log(`[conflict] auto-retired the older note ${older.id.slice(0, 8)}`)
+          // Retire the side the MODEL judged superseded — never the older-by-
+          // wall-clock one. A note records when it was WRITTEN, not when the fact
+          // became true, and the two come apart constantly: "back in 2019 I was
+          // vegetarian", written today, is the newer row and the older fact.
+          // Retiring by ingestion time would then silence the CURRENT memory.
+          const superseded = supersededIndex === a ? noteA : supersededIndex === b ? noteB : null
+          if (!superseded) {
+            // The model could not tell. Marking already happened above, so the
+            // conflict is visible for review — but nothing gets retired on a
+            // guess. This is the safe half of auto mode, not a failure.
+            log(`[conflict] auto: no superseded side identified — marked only, nothing retired`)
+          } else {
+            const ok = await ctx.invalidateNote(superseded.id, agentId)
+            if (ok) {
+              retired++
+              log(`[conflict] auto-retired the superseded note ${superseded.id.slice(0, 8)}`)
+            }
           }
         }
       }
