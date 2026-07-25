@@ -208,11 +208,19 @@ function register(api: {
                 items: { type: 'string' },
                 description: 'Story 26B: filter knowledge notes by topics (all must match)',
               },
+              subject: {
+                type: 'string',
+                description:
+                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search everything.',
+              },
             },
             required: ['query'],
           },
-          async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
-            const { query, limit = 5, topicsFilter } = params
+          async execute(
+            _toolCallId: string,
+            params: { query: string; limit?: number; topicsFilter?: string[]; subject?: string }
+          ) {
+            const { query, limit = 5, topicsFilter, subject } = params
             const start = Date.now()
             // If write-back is off, append the notice so the assistant relays it to
             // the user (a plugin's most user-visible channel). Determined at startup.
@@ -220,6 +228,7 @@ function register(api: {
             try {
               const results = await searchMemory(query, limit, scope.agentId, {
                 topicsFilter,
+                subject,
                 storageCtx: scope.storageCtx,
               })
               logger.info(
@@ -263,14 +272,20 @@ function register(api: {
             type: 'object',
             properties: {
               text: { type: 'string', description: 'Fact or information to remember' },
+              subjects: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  'Who this memory is about (e.g. player names). Use several for a shared experience — it will surface for each of them. Leave empty for a fact about the world or about yourself.',
+              },
             },
             required: ['text'],
           },
-          async execute(_toolCallId: string, params: { text: string }) {
-            const { text } = params
+          async execute(_toolCallId: string, params: { text: string; subjects?: string[] }) {
+            const { text, subjects } = params
             const start = Date.now()
             try {
-              const id = await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
+              const id = await addMemory(text, scope.agentId, { subjects, storageCtx: scope.storageCtx })
               logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
               return {
                 content: [{ type: 'text', text: 'Memory saved successfully.' }],

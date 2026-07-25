@@ -83,4 +83,41 @@ describe('memory pipeline (integration — requires Qdrant on :6333)', () => {
     expect(snapshot).toBeDefined()
     expect(snapshot?.oldContent).toBe(original)
   })
+
+  // Story 44: the subject filter is where isolation actually happens — it is a
+  // Qdrant filter, not a JS post-filter — so it can only be proven against a
+  // real Qdrant. The three cases are the whole visibility rule.
+  it('scopes retrieval by subject: own + shared + world, never someone else’s', async () => {
+    const ctx = createStorageContext(collection)
+    const tag = `subj${process.pid}`
+
+    await addMemory(`${tag} alex likes mining at midnight`, 'main', { subjects: ['alex'], storageCtx: ctx })
+    await addMemory(`${tag} sam likes building at midnight`, 'main', { subjects: ['sam'], storageCtx: ctx })
+    await addMemory(`${tag} alex and sam beat the dragon at midnight`, 'main', {
+      subjects: ['alex', 'sam'],
+      storageCtx: ctx,
+    })
+    await addMemory(`${tag} the server spawn is at midnight`, 'main', { storageCtx: ctx })
+
+    const forAlex = (await searchMemory(`${tag} midnight`, 10, 'main', { subject: 'alex', storageCtx: ctx })).map(
+      (r) => r.content
+    )
+
+    expect(forAlex.some((c) => c.includes('alex likes mining'))).toBe(true) // about them
+    expect(forAlex.some((c) => c.includes('beat the dragon'))).toBe(true) // shared with them
+    expect(forAlex.some((c) => c.includes('server spawn'))).toBe(true) // about nobody
+    expect(forAlex.some((c) => c.includes('sam likes building'))).toBe(false) // about someone else
+  })
+
+  it('returns everything when no subject is given — zero regression', async () => {
+    const ctx = createStorageContext(collection)
+    const tag = `nosubj${process.pid}`
+
+    await addMemory(`${tag} alex fact about redstone`, 'main', { subjects: ['alex'], storageCtx: ctx })
+    await addMemory(`${tag} world fact about redstone`, 'main', { storageCtx: ctx })
+
+    const all = (await searchMemory(`${tag} redstone`, 10, 'main', { storageCtx: ctx })).map((r) => r.content)
+    expect(all.some((c) => c.includes('alex fact'))).toBe(true)
+    expect(all.some((c) => c.includes('world fact'))).toBe(true)
+  })
 })
