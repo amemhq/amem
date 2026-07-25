@@ -30,3 +30,12 @@ overrides:
   # unused here — but it still ships in the tree and gets scanned. Verified by
   # running the real embedding path against the override (see PR).
   sharp: '>=0.35.0' # GHSA: inherited libvips CVE-2026-33327 / CVE-2026-3xxxx
+  # Dev-only (vitepress' vue toolchain). tsup's copy already resolves to 8.5.20;
+  # this drags the docs one forward too. Same major, no API change.
+  postcss: '>=8.5.18' # GHSA: path traversal in previous-source-map auto-loading
+  # 2.x is outside the MCP SDK's declared ^1.19.9, and there is no 1.x patch —
+  # the advisory's vulnerable range is `< 2.0.5`. Taken anyway because the SDK
+  # only touches hono from its streamableHttp transport, and amem-api uses stdio:
+  # `hono` appears nowhere in its built output, so this cannot change behaviour
+  # at runtime. Verified by build + typecheck + the full test suite below.
+  '@hono/node-server': '>=2.0.5' # GHSA: serve-static path traversal on Windows
