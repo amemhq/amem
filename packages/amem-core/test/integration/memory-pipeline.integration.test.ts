@@ -39,7 +39,7 @@ vi.mock('../../src/embedding.js', () => ({
 }))
 
 import { addMemory, searchMemory } from '../../src/memory.js'
-import { createStorageContext } from '../../src/storage.js'
+import { createStorageContext, type MemoryNote } from '../../src/storage.js'
 
 // A fresh collection per worker keeps integration runs isolated (Mode B).
 const collection = `amem_it_${process.pid}`
@@ -85,39 +85,75 @@ describe('memory pipeline (integration — requires Qdrant on :6333)', () => {
   })
 
   // Story 44: the subject filter is where isolation actually happens — it is a
-  // Qdrant filter, not a JS post-filter — so it can only be proven against a
-  // real Qdrant. The three cases are the whole visibility rule.
+  // Qdrant filter, not a JS post-filter — so it can only be proven against a real
+  // Qdrant. Exercised at the STORAGE layer on purpose: this is a storage concern,
+  // and going through addMemory would drag in hash and high-similarity dedup,
+  // which collapses deliberately-similar test fixtures into one another. That
+  // searchMemory threads the subject into both of its retrieval calls is pinned
+  // by the unit tests instead.
+  const subjNote = (id: string, content: string, subjects: string[], seed: number): MemoryNote => {
+    // Distinct one-hot-ish vectors: identical enough to all match the probe,
+    // distinct enough that nothing here depends on embedding similarity.
+    const embedding = new Array(384).fill(0)
+    embedding[seed] = 1
+    const now = new Date().toISOString()
+    return {
+      id,
+      subjects,
+      content,
+      keywords: [],
+      tags: [],
+      context: '',
+      embedding,
+      links: [],
+      timestamp: now,
+      agent_id: 'main',
+      hash: id,
+      retrieval_count: 0,
+      last_accessed: now,
+      evolution_history: [],
+      category: 'General',
+      is_active: true,
+      note_type: 'memory',
+      topics: [],
+      pending_merge: false,
+      conflict: false,
+      ephemeral: false,
+      low_quality: false,
+      owner: 'main',
+      readers: ['main'],
+      writers: ['main'],
+    } as MemoryNote
+  }
+
   it('scopes retrieval by subject: own + shared + world, never someone else’s', async () => {
     const ctx = createStorageContext(collection)
-    const tag = `subj${process.pid}`
+    const p = process.pid
+    const probe = new Array(384).fill(1 / Math.sqrt(384)) // matches everything a little
 
-    await addMemory(`${tag} alex likes mining at midnight`, 'main', { subjects: ['alex'], storageCtx: ctx })
-    await addMemory(`${tag} sam likes building at midnight`, 'main', { subjects: ['sam'], storageCtx: ctx })
-    await addMemory(`${tag} alex and sam beat the dragon at midnight`, 'main', {
-      subjects: ['alex', 'sam'],
-      storageCtx: ctx,
-    })
-    await addMemory(`${tag} the server spawn is at midnight`, 'main', { storageCtx: ctx })
-
-    const forAlex = (await searchMemory(`${tag} midnight`, 10, 'main', { subject: 'alex', storageCtx: ctx })).map(
-      (r) => r.content
+    await ctx.addNote(subjNote(`00000000-0000-4000-8000-${String(p).padStart(12, '1')}`, 'ALEX only', ['alex'], 10))
+    await ctx.addNote(subjNote(`00000000-0000-4000-8000-${String(p).padStart(12, '2')}`, 'SAM only', ['sam'], 11))
+    await ctx.addNote(
+      subjNote(`00000000-0000-4000-8000-${String(p).padStart(12, '3')}`, 'SHARED both', ['alex', 'sam'], 12)
     )
+    await ctx.addNote(subjNote(`00000000-0000-4000-8000-${String(p).padStart(12, '4')}`, 'WORLD nobody', [], 13))
 
-    expect(forAlex.some((c) => c.includes('alex likes mining'))).toBe(true) // about them
-    expect(forAlex.some((c) => c.includes('beat the dragon'))).toBe(true) // shared with them
-    expect(forAlex.some((c) => c.includes('server spawn'))).toBe(true) // about nobody
-    expect(forAlex.some((c) => c.includes('sam likes building'))).toBe(false) // about someone else
-  })
+    const seen = async (subject?: string) =>
+      (await ctx.queryByEmbedding(probe, 50, 'main', 0.0, subject)).map((r) => r.note.content)
 
-  it('returns everything when no subject is given — zero regression', async () => {
-    const ctx = createStorageContext(collection)
-    const tag = `nosubj${process.pid}`
+    const forAlex = await seen('alex')
+    expect(forAlex).toContain('ALEX only') // about them
+    expect(forAlex).toContain('SHARED both') // shared with them
+    expect(forAlex).toContain('WORLD nobody') // about nobody
+    expect(forAlex).not.toContain('SAM only') // about someone else
 
-    await addMemory(`${tag} alex fact about redstone`, 'main', { subjects: ['alex'], storageCtx: ctx })
-    await addMemory(`${tag} world fact about redstone`, 'main', { storageCtx: ctx })
+    const forSam = await seen('sam')
+    expect(forSam).toContain('SAM only')
+    expect(forSam).toContain('SHARED both')
+    expect(forSam).not.toContain('ALEX only')
 
-    const all = (await searchMemory(`${tag} redstone`, 10, 'main', { storageCtx: ctx })).map((r) => r.content)
-    expect(all.some((c) => c.includes('alex fact'))).toBe(true)
-    expect(all.some((c) => c.includes('world fact'))).toBe(true)
+    // No subject = no person scoping. This is what every existing caller does.
+    const all = await seen()
+    expect(all).toEqual(expect.arrayContaining(['ALEX only', 'SAM only', 'SHARED both', 'WORLD nobody']))
   })
 })
