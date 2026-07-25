@@ -37,8 +37,21 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
+      # Retry: package postinstalls fetch native binaries at install time, and a
+      # transient network failure in the runner fails the whole job for reasons
+      # that have nothing to do with the change under test. Seen three times
+      # recently — twice as ENETUNREACH in onnxruntime-node's postinstall, once
+      # as a timeout in pnpm's own signature check — so this guards the step, not
+      # one package. A real breakage still fails all three attempts.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then exit 0; fi
+            echo "::warning::pnpm install failed (attempt $attempt/3); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::pnpm install failed after 3 attempts"
+          exit 1
 
       # Opens the release PR when changesets exist; once that PR is merged
       # (versions bumped), the next run publishes to npm.
