@@ -94,10 +94,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      # gitleaks-action bills organisation-owned repos, which this became when the
+      # repo moved to amemhq: it now dies in 8s with "[amemhq] is an organization.
+      # License key is required." The gitleaks CLI itself is MIT and unrestricted,
+      # so run the binary — same engine, same default ruleset, no wrapper.
+      # --redact keeps any match out of the log; the finding's location is enough
+      # to act on and the value must never be printed.
       - name: Credential scan (gitleaks)
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSLO "$base/$tarball"
+          curl -sSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${tarball}\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git . --redact --exit-code 1
 
   # Integration tests drive the real memory pipeline against a Qdrant service
   # container, with the LLM and embeddings mocked (deterministic, no API calls,
