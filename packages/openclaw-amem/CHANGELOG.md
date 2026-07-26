@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.4.1
+
+### Patch Changes
+
+- [#88](https://github.com/amemhq/amem/pull/88) [`d94ca7f`](https://github.com/amemhq/amem/commit/d94ca7ff7c99bfe782192b56240fcee860218f73) Thanks [@heichaowo](https://github.com/heichaowo)! - Fix the exports map and the plugin's install command.
+
+  `@amemhq/core` had `types` as a flat sibling of `import`/`require` in its exports
+  map. TypeScript adds `types` to the condition set for every caller and takes the
+  first match, so a CJS consumer on `moduleResolution: node16` resolved the ESM
+  `index.d.ts` and got TS1479. tsup was already emitting `index.d.cts`; the map
+  just never pointed at it. Now nested per condition.
+
+  The plugin README's recommended install line read
+  `clawhub:@heichaowo/openclaw-amem`. ClawHub's identifier is the unscoped
+  `openclaw-amem`, so that command never worked.
+
+  `@types/uuid` moves to devDependencies — it is a deprecated stub (uuid ships its
+  own types) and every `npm i openclaw-amem` printed a deprecation warning for it.
+
+- [#85](https://github.com/amemhq/amem/pull/85) [`e968fcd`](https://github.com/amemhq/amem/commit/e968fcd176f1f321455b69cd93abbc542ae7a7d8) Thanks [@heichaowo](https://github.com/heichaowo)! - Rename the engine to `@amemhq/core`. The plugin keeps its name.
+
+  `@heichaowo/amem-core` was a personal scope — it appears in other people's
+  package.json, which is the wrong signal for something meant to be used as neutral
+  infrastructure. The engine is now `@amemhq/core` and the service `@amemhq/api`.
+
+  Unscoped `amem` is not an option: npm's publish-time similarity guard rejects it
+  (E403, one edit from `amen`/`amemo`/`mem`), which is why the scope existed in the
+  first place. Zep and Letta hit the same problem and solved it the same way —
+  decorate the org (`@getzep`, `@letta-ai`) and scope the package.
+
+  `openclaw-amem` stays unscoped: that is the convention for OpenClaw plugins, and
+  it is the ClawHub package identity behind
+  `openclaw plugins install clawhub:openclaw-amem`.
+
+  `@heichaowo/amem-core` gets a deprecation notice pointing here. Nothing else
+  changes — the plugin bundles the engine, so plugin users are unaffected.
+
 ## 1.4.0
 
 ### Minor Changes
