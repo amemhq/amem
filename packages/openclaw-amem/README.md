@@ -8,9 +8,9 @@
 [![npm](https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/openclaw-amem)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
 
-**Long-term memory for [OpenClaw](https://github.com/openclaw/openclaw) agents.**
+**Memory for [OpenClaw](https://github.com/openclaw/openclaw) agents that catches its own contradictions.**
 
-Extracts facts from conversations instead of storing transcripts, links related ones into a Zettelkasten-style graph, and retrieves them with hybrid BM25 + dense search over 2-hop graph expansion. Memories are scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than filtered after it. A nightly pass re-reads what changed and flags memories that contradict each other.
+A nightly pass re-reads what changed and flags memories that no longer agree with each other — the failure mode every long-lived memory store eventually has. The rest: facts extracted instead of transcripts stored, notes rewritten as new ones arrive, linked into a Zettelkasten-style graph, retrieved with hybrid BM25 + dense search over 2-hop expansion. Memories are scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than filtered after it.
 
 Runs on a small model — `gpt-4o-mini`, `haiku`, a local Ollama. No Python.
 

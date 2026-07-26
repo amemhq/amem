@@ -1,7 +1,7 @@
 {
   "name": "openclaw-amem",
   "version": "1.3.0",
-  "description": "Long-term memory for OpenClaw agents. Extracts facts instead of storing transcripts, links related ones into a graph, scopes them per agent and per subject, and flags contradictions. Runs on a small model. Requires a local Qdrant. 中文走 jieba 分词，提示词有中文版。",
+  "description": "Catches memories that contradict each other. Notes rewrite themselves as new ones arrive, link into a graph, and stay separated per agent and per person. Runs on a small model. Requires a local Qdrant. 中文走 jieba 分词，提示词有中文版。",
   "license": "MIT",
   "main": "dist/index.js",
   "openclaw": {

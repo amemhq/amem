@@ -48,6 +48,7 @@ export default defineConfig({
           { text: 'Quick Start', link: '/guide/quick-start' },
           { text: 'Configuration', link: '/reference/configuration' },
           { text: 'Tools', link: '/reference/tools' },
+          { text: 'Embedding Models', link: '/reference/embedding-models' },
           { text: 'Smoke Test Results', link: '/reference/smoketest' },
         ],
       },
