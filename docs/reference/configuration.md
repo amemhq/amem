@@ -32,6 +32,7 @@
 | `llmStrongModel` | `string` | falls back to `llmModel` | Optional strong tier: model for the hard judgements. Unset = single-model behaviour. |
 | `llmStrongBaseURL` | `string` | falls back to `llmBaseURL` | Optional strong tier: endpoint. |
 | `llmCrudRole` | `"fast" \| "strong"` | `"fast"` | Which tier the `agent_end` CRUD decision runs on. |
+| `conflictSweep` | `boolean` | `true` | Run the nightly contradiction sweep. See [Contradiction sweep](#contradiction-sweep). |
 | `crudUpdateMinSim` | `number` | `0.35` | Similarity floor for accepting an LLM-chosen `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, automatic memory write-back is silently blocked by OpenClaw. |
 
@@ -105,7 +106,16 @@ guard stops it writing to the wrong memory — but **dull**: it misses
 contradictions it should have caught. A cheap model scores around 8.7% at
 noticing that a stored memory has quietly stopped being true.
 
-So a sweep runs offline, in batches, on the **strong** tier. It hands the model a
+So a sweep runs nightly, after the daily consolidation, in batches, on the **strong** tier
+(or the fast one, if no strong model is configured — nothing starts costing more
+on its own). Set `conflictSweep: false` to turn it off.
+
+It only re-reads batches that **gained a memory** since the last run, so the first
+night costs roughly one call per 25 memories and every night after that costs one
+or two. The tradeoff is worth stating: a new memory is compared against the batch
+it lands in — its category's most recent — not against the entire history, so a
+contradiction between two old memories that never shared a batch is not found.
+Clearing `conflict_scanned_at` forces a full re-read. It hands the model a
 whole batch of memories at once rather than comparing them pairwise, because the
 contradictions that matter are often *far apart* in meaning — "is vegetarian" and
 "loved the steak" would never be paired by a similarity check. When it finds a

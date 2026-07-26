@@ -1,7 +1,7 @@
 {
   "id": "openclaw-amem",
   "name": "amem — agentic memory",
-  "description": "Memories that evolve, not just accumulate. Notes link into a graph, contradictions get caught, and memories stay separated per agent and per person. Hybrid retrieval over Qdrant — runs fine on a cheap or local model.",
+  "description": "Memories that evolve, not just accumulate. Notes link into a graph, contradictions are caught by a nightly sweep, and memories stay separated per agent and per person. Hybrid retrieval over Qdrant — runs fine on a cheap or local model. 中文一等公民：jieba 分词让 BM25 真正可用、中文提示词、多语言向量模型。",
   "version": "1.3.0",
   "kind": "memory",
   "openclaw": {
@@ -138,6 +138,11 @@
         ],
         "default": "fast",
         "description": "Which tier the agent_end CRUD decision runs on. Defaults to fast: it runs every turn, and its destructive failure mode is handled by the update guard rather than by model tier. Overridden by AMEM_LLM_CRUD_ROLE."
+      },
+      "conflictSweep": {
+        "type": "boolean",
+        "default": true,
+        "description": "Run the nightly contradiction sweep after daily consolidation. Only batches that gained a memory are re-read, so a typical night costs one or two LLM calls. Set false to disable."
       },
       "crudUpdateMinSim": {
         "type": "number",

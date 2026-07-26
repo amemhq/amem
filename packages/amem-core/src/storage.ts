@@ -38,6 +38,8 @@ export interface AmemPluginConfig {
   llmStrongBaseURL?: string
   /** Which tier the agent_end CRUD decision runs on: `fast` (default) or `strong`. */
   llmCrudRole?: 'fast' | 'strong'
+  /** Story 43: run the nightly contradiction sweep. Default true. */
+  conflictSweep?: boolean
   // ── Story 41: CRUD write safety ─────────────────────────────────────────────
   /** Similarity floor for accepting an LLM-chosen UPDATE target. Raise it for
    * cheaper models — a rejected update is stored as a new memory, never lost. */
@@ -93,6 +95,13 @@ export interface MemoryNote {
   // renderable as ONE decision instead of two disconnected entries.
   conflicts_with?: string[]
   conflict_reason?: string
+  /**
+   * Story 43: when this note was last included in a contradiction scan.
+   * Absent = never scanned. Lets the sweep skip batches it has already judged,
+   * which is what makes a daily run cost one or two calls instead of re-reading
+   * the whole store every night.
+   */
+  conflict_scanned_at?: string
   // ── Story 44: who this memory is ABOUT ──────────────────────────────────────
   // Distinct from `agent_id`/`owner`, which say whose STORE it lives in. A
   // companion meeting several players needs both: one memory store, many people
@@ -251,6 +260,7 @@ function noteToPoint(note: MemoryNote) {
       conflict: note.conflict ?? false,
       conflicts_with: note.conflicts_with ?? [],
       conflict_reason: note.conflict_reason ?? '',
+      conflict_scanned_at: note.conflict_scanned_at ?? '',
       subjects: note.subjects ?? [],
       // 31
       ephemeral: note.ephemeral ?? false,
@@ -316,6 +326,7 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
       ? (p.conflicts_with as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
     conflict_reason: typeof p.conflict_reason === 'string' ? p.conflict_reason : '',
+    conflict_scanned_at: typeof p.conflict_scanned_at === 'string' ? p.conflict_scanned_at : '',
     subjects: Array.isArray(p.subjects)
       ? (p.subjects as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
