@@ -652,7 +652,7 @@ function register(api: {
 
 const plugin = definePluginEntry({
   id: 'openclaw-amem',
-  name: 'amem — agentic memory',
+  name: 'amem',
   description:
     'Agentic memory for OpenClaw — memories evolve, link into a graph, and stay separated per agent and per person.',
   register,
