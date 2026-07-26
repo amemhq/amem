@@ -1,7 +1,7 @@
 {
   "name": "openclaw-amem",
   "version": "1.3.0",
-  "description": "Memories that evolve, not just accumulate. Notes link into a graph, contradictions are caught by a nightly sweep, and memories stay separated per agent and per person. Hybrid retrieval over Qdrant — runs fine on a cheap or local model. 中文做了专门处理：jieba 分词（否则 BM25 对中文几乎无效）、中文提示词、多语言向量模型。",
+  "description": "Your agent remembers you — not just a transcript. It keeps what matters, links related memories together, tells different people apart, and notices when something new contradicts what it already knew. 中文是专门处理过的，不是拿英文那一套凑合。",
   "license": "MIT",
   "main": "dist/index.js",
   "openclaw": {

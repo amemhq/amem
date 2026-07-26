@@ -8,13 +8,20 @@
 [![npm](https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/openclaw-amem)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
 
-**Agentic memory for [OpenClaw](https://github.com/openclaw/openclaw)** — memories **evolve**, not just accumulate.
+**A memory that grows, for [OpenClaw](https://github.com/openclaw/openclaw).**
 
-Notes link themselves into a graph and are retrieved by a hybrid of BM25 and dense search with 2-hop graph expansion. Memories stay separated **per agent** and **per person**, so one character can remember several people without mixing them up. A nightly sweep catches memories that have started contradicting each other. Backed by Qdrant + local Transformers.js — and it runs fine on a cheap or local model. **No Python required.**
+Your agent remembers you — not just a transcript. It keeps what matters, links related memories together, tells different people apart, and notices when something new contradicts what it already knew. It runs on a small, cheap model, and works offline against a local one. **No Python required.**
 
-**中文处理**：BM25 检索走 [jieba](https://github.com/messense/node-jieba) 分词——中文没有空格，不分词的话关键词检索几乎无效；提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`）；向量模型本身是多语言的。
+**中文是专门处理过的**，不是拿英文那一套凑合。中文没有空格，所以直接套用英文的切词方式，关键词检索基本就废了 —— 这里用的是中文分词，提示词也有完整中文版。
 
-Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110).
+<details>
+<summary>How it works, for the curious</summary>
+
+Notes construct themselves into a Zettelkasten-style graph and are retrieved by a hybrid of BM25 and dense vector search with 2-hop graph expansion. Access is scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than after it. A nightly pass re-reads only what changed and flags memories that contradict each other. Chinese specifically: [jieba](https://github.com/messense/node-jieba) segmentation feeding BM25, a full `zh` prompt locale (`AMEM_PROMPT_LOCALE=zh`), and a multilingual embedding model.
+
+Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110). The engine itself is [`@heichaowo/amem-core`](../amem-core).
+
+</details>
 
 > 🧠 The memory **engine** lives in **[`amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
