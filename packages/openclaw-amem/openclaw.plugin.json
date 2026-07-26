@@ -1,7 +1,7 @@
 {
   "id": "openclaw-amem",
   "name": "amem — agentic memory",
-  "description": "Your agent remembers you — not just a transcript. It keeps what matters, links related memories together, tells different people apart, and notices when something new contradicts what it already knew. 中文是专门处理过的，不是拿英文那一套凑合。",
+  "description": "Long-term memory for OpenClaw agents. Extracts facts instead of storing transcripts, links related ones into a graph, scopes them per agent and per subject, and flags contradictions. Runs on a small model. Requires a local Qdrant. 中文走 jieba 分词，提示词有中文版。",
   "version": "1.3.0",
   "kind": "memory",
   "openclaw": {

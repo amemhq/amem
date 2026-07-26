@@ -8,22 +8,16 @@
 [![npm](https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/openclaw-amem)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
 
-**A memory that grows, for [OpenClaw](https://github.com/openclaw/openclaw).**
+**Long-term memory for [OpenClaw](https://github.com/openclaw/openclaw) agents.**
 
-Your agent remembers you — not just a transcript. It keeps what matters, links related memories together, tells different people apart, and notices when something new contradicts what it already knew. It runs on a small, cheap model, and works offline against a local one. **No Python required.**
+Extracts facts from conversations instead of storing transcripts, links related ones into a Zettelkasten-style graph, and retrieves them with hybrid BM25 + dense search over 2-hop graph expansion. Memories are scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than filtered after it. A nightly pass re-reads what changed and flags memories that contradict each other.
 
-**中文是专门处理过的**，不是拿英文那一套凑合。中文没有空格，所以直接套用英文的切词方式，关键词检索基本就废了 —— 这里用的是中文分词，提示词也有完整中文版。
+Runs on a small model — `gpt-4o-mini`, `haiku`, a local Ollama. No Python.
 
-<details>
-<summary>How it works, for the curious</summary>
+中文走 [jieba](https://github.com/messense/node-jieba) 分词，提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`），embedding 模型本身多语言。
 
-Notes construct themselves into a Zettelkasten-style graph and are retrieved by a hybrid of BM25 and dense vector search with 2-hop graph expansion. Access is scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than after it. A nightly pass re-reads only what changed and flags memories that contradict each other. Chinese specifically: [jieba](https://github.com/messense/node-jieba) segmentation feeding BM25, a full `zh` prompt locale (`AMEM_PROMPT_LOCALE=zh`), and a multilingual embedding model.
+Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@heichaowo/amem-core`](../amem-core).
 
-Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110). The engine itself is [`@heichaowo/amem-core`](../amem-core).
-
-</details>
-
-> 🧠 The memory **engine** lives in **[`amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
 ⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).
