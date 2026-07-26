@@ -13,7 +13,7 @@
  * conv-access.ts lives on its own.
  */
 
-import type { AmemPluginConfig, StorageContext } from '@heichaowo/amem-core'
+import type { AmemPluginConfig, StorageContext } from '@amemhq/core'
 
 /** Per-call context carrying the runtime per-session agent identity. */
 export interface AgentCtx {

@@ -28,7 +28,7 @@ import {
   EmbeddingDimensionMismatchError,
   isPlausibleUpdateTarget,
   type AmemPluginConfig,
-} from '@heichaowo/amem-core'
+} from '@amemhq/core'
 import { createHash } from 'crypto'
 import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
 import {
@@ -502,7 +502,7 @@ function register(api: {
           }))
 
           // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
-          const { llmCrudDecision } = await import('@heichaowo/amem-core')
+          const { llmCrudDecision } = await import('@amemhq/core')
           const operations = await llmCrudDecision(
             userText,
             assistantText,
@@ -684,4 +684,4 @@ export {
   patchNotePayload,
   scanLowQuality,
   generateReviewBatch,
-} from '@heichaowo/amem-core'
+} from '@amemhq/core'

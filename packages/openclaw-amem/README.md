@@ -16,7 +16,7 @@ Runs on a small model — `gpt-4o-mini`, `haiku`, a local Ollama. No Python.
 
 中文走 [jieba](https://github.com/messense/node-jieba) 分词，提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`），embedding 模型本身多语言。
 
-Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@heichaowo/amem-core`](../amem-core).
+Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@amemhq/core`](../amem-core).
 
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 

@@ -67,7 +67,7 @@ amem is a monorepo you can adopt one piece at a time.
 
 | Package | Role | Status |
 | --- | --- | --- |
-| **@heichaowo/amem-core** | **Engine** — note construction, evolution, hybrid retrieval. Framework-agnostic. | shipping · [npm](https://www.npmjs.com/package/@heichaowo/amem-core) · also bundled in the plugin |
+| **@amemhq/core** | **Engine** — note construction, evolution, hybrid retrieval. Framework-agnostic. | shipping · [npm](https://www.npmjs.com/package/@amemhq/core) · also bundled in the plugin |
 | **openclaw-amem** | **OpenClaw Plugin** — drops A-MEM into OpenClaw's `memory` slot. | shipping · [npm](https://www.npmjs.com/package/openclaw-amem) · ClawHub |
 | **amem-api** | **Server** — single-writer HTTP + MCP service so many processes share one store. | *coming soon* |
 

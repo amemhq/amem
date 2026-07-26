@@ -7,7 +7,7 @@ Security fixes land on the latest release of each published package; there is no
 | Package                | Version        | Supported |
 | ---------------------- | -------------- | --------- |
 | `openclaw-amem`        | latest `1.1.x` | ✅        |
-| `@heichaowo/amem-core` | latest `0.2.x` | ✅        |
+| `@amemhq/core` | latest `0.2.x` | ✅        |
 | either                 | anything older | ❌        |
 
 The engine is also bundled inside `openclaw-amem`, so an engine fix ships in both — update the plugin as well as the package. `amem-api` is not released yet; report issues against it here all the same.

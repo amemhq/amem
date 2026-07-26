@@ -17,7 +17,7 @@ Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not
 
 | Package | What it is | npm |
 | --- | --- | --- |
-| [`@heichaowo/amem-core`](packages/amem-core) | Framework-agnostic **A-MEM engine** — note construction, evolution, hybrid (BM25 + dense) retrieval with graph expansion. Qdrant + Transformers.js. | `@heichaowo/amem-core` |
+| [`@amemhq/core`](packages/amem-core) | Framework-agnostic **A-MEM engine** — note construction, evolution, hybrid (BM25 + dense) retrieval with graph expansion. Qdrant + Transformers.js. | `@amemhq/core` |
 | [`openclaw-amem`](packages/openclaw-amem) | **OpenClaw** memory-slot plugin — a thin wrapper around `amem-core`. | `openclaw-amem` |
 | `amem-api` | Thin single-writer **service** (HTTP + MCP) so multiple processes share one memory store. | *coming soon* |
 

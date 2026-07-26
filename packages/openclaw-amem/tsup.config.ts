@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 import { fileURLToPath } from 'node:url'
 
-// The engine (`@heichaowo/amem-core`, its source lives in packages/amem-core)
+// The engine (`@amemhq/core`, its source lives in packages/amem-core)
 // is inlined into this bundle so the plugin ships self-contained: one ClawHub
 // artifact, no runtime engine fetch, no version skew. It is resolved by alias
 // to its source rather than declared as a dependency on purpose — a
@@ -25,6 +25,6 @@ export default defineConfig({
   esbuildOptions(options) {
     // Everything in `dependencies` stays external and is installed at runtime;
     // only the engine is inlined, via this alias to its source.
-    options.alias = { ...options.alias, '@heichaowo/amem-core': amemEngine }
+    options.alias = { ...options.alias, '@amemhq/core': amemEngine }
   },
 })

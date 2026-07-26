@@ -1,5 +1,5 @@
 {
-  "name": "@heichaowo/amem-api",
+  "name": "@amemhq/api",
   "version": "0.1.4",
   "private": true,
   "description": "amem-api — the single-writer memory service for the amem stack (HTTP + MCP).",
@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@heichaowo/amem-core": "workspace:*",
+    "@amemhq/core": "workspace:*",
     "fastify": "^5.10.0",
     "zod": "^4.4.3"
   },

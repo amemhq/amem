@@ -2,7 +2,7 @@
   "name": "amem",
   "version": "0.0.0",
   "private": true,
-  "description": "amem monorepo — agentic memory engine (amem), service (@heichaowo/amem-api), and the OpenClaw plugin (openclaw-amem).",
+  "description": "amem monorepo — agentic memory engine (amem), service (@amemhq/api), and the OpenClaw plugin (openclaw-amem).",
   "license": "MIT",
   "packageManager": "pnpm@11.15.1",
   "scripts": {
