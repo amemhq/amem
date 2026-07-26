@@ -298,6 +298,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |
 | `AMEM_CRUD_UPDATE_MIN_SIM` | `0.35` | Similarity floor (0–1) for accepting an LLM-chosen CRUD `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
+| `AMEM_EMBED_MODEL` | `Xenova/paraphrase-multilingual-MiniLM-L12-v2` | Which model embeds memories. Changing it is a **breaking change** whenever the vector width differs — see [Embedding models](/reference/embedding-models). |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |

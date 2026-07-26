@@ -107,10 +107,30 @@ switch is atomic and reversible. Re-embedding needs **no LLM calls**: every fiel
 that feeds the vector (`content`, `keywords`, `tags`, `context`) is already in the
 payload, so the cost is local compute.
 
-::: warning Not yet available
-The model is currently a constant, and there is no migration tooling — this section
-describes where it is going, not something you can run today. `ensureCollection`
-also does not check the dimension of an existing collection, so a mismatched model
-would fail at the first write rather than at startup. Both land together in a
-release that keeps the current model as the default, before any default changes.
+`AMEM_EMBED_MODEL` selects the model. Its vector width is **measured** at startup
+by encoding one short string, not read from a table — a table would be silently
+wrong for any model not in it, and the collection would then be created at the
+wrong size.
+
+If the configured model's width does not match the collection that already
+exists, startup fails with the fix in the message, rather than the first write
+failing with a raw storage error mid-session.
+
+```ts
+// reports what it would do, writes nothing
+await migrateCollection({ from: 'amem_notes', to: 'amem_notes_v2' })
+
+await migrateCollection({ from: 'amem_notes', to: 'amem_notes_v2', dryRun: false })
+// then point the engine at it:  AMEM_COLLECTION=amem_notes_v2
+```
+
+It refuses to write into a target that already holds points. Notes that never had
+`keywords`/`tags` extracted are re-run through the current pipeline on the way
+across, because a vector built from a note missing those fields is built from less
+text than the same note would produce today. Fields that already have values are
+left alone — this fills gaps, it does not relabel.
+
+::: tip Keep the old collection
+Nothing deletes it, and `AMEM_COLLECTION` is read on every call, so switching back
+is one environment variable. Delete the old one only once you are satisfied.
 :::

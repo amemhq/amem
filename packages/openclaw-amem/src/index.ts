@@ -25,6 +25,7 @@ import {
   configure,
   configureLlm,
   conflictSweep,
+  EmbeddingDimensionMismatchError,
   isPlausibleUpdateTarget,
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
@@ -120,10 +121,17 @@ function register(api: {
     `openclaw-amem: registered (native TS, Qdrant, default agent_id=${defaultScope.agentId}, default collection=${pluginConfig.collection ?? 'amem_notes (default)'}, per-agent scope resolved per call)`
   )
 
-  // Pre-warm: ensure the default Qdrant collection exists
-  ensureCollection(pluginConfig.collection).catch((e) =>
-    logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
-  )
+  // Pre-warm: ensure the default Qdrant collection exists.
+  // A dimension mismatch is not a transient startup hiccup — memory is simply
+  // broken until someone acts — so it is logged as an error with the fix, not as
+  // one more warning to scroll past.
+  ensureCollection(pluginConfig.collection).catch((e) => {
+    if (e instanceof EmbeddingDimensionMismatchError) {
+      logger.error(`openclaw-amem: memory is UNUSABLE — ${e.message}`)
+    } else {
+      logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
+    }
+  })
 
   // ── registerMemoryCapability ─────────────────────────────────────────────
   if (typeof api.registerMemoryCapability === 'function') {

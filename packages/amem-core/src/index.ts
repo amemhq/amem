@@ -58,6 +58,14 @@ export {
 // serves a note fetched by id — a REST get-by-id, a graph walk — on `canRead`.
 export { canWrite, canRead } from './auth.js'
 
+// ── Embedding model + migration ──────────────────────────────────────────────
+// The model is selectable, and its vector width is measured rather than assumed.
+// Changing it is breaking whenever the width differs, so migrateCollection does
+// build-alongside → backfill → verify and never writes to the source.
+export { getEmbeddingModel, getEmbeddingDim, DEFAULT_EMBEDDING_MODEL } from './embedding.js'
+export { EmbeddingDimensionMismatchError } from './storage.js'
+export { migrateCollection, type MigrateResult } from './migrate.js'
+
 // ── Story 43: cold-layer contradiction sweep ─────────────────────────────────
 // Finds memories that contradict each other and marks the pair. Runs offline on
 // the `strong` tier, because the per-turn cheap-model CRUD decision is safe but
