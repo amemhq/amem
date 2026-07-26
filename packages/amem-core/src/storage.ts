@@ -5,6 +5,7 @@
  */
 
 import { canWrite, canRead } from './auth.js'
+import { getEmbeddingDim, getEmbeddingModel } from './embedding.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,7 +134,30 @@ export interface QueryResult {
 // ── Config ────────────────────────────────────────────────────────────────────
 const QDRANT_URL = 'http://localhost:6333'
 const getCollection = () => process.env.AMEM_COLLECTION || 'amem_notes'
-const VECTOR_DIM = 384
+/**
+ * Raised when the configured model's vector width does not match the collection
+ * that already exists. Its own class so the plugin can log it loudly instead of
+ * as one more startup warning — this one needs the operator to act.
+ */
+export class EmbeddingDimensionMismatchError extends Error {
+  constructor(
+    readonly collection: string,
+    readonly collectionDim: number,
+    readonly modelDim: number,
+    readonly model: string
+  ) {
+    super(
+      `Collection "${collection}" stores ${collectionDim}-dimension vectors, but ` +
+        `the embedding model "${model}" produces ${modelDim}. Qdrant fixes a ` +
+        `collection's vector size at creation and cannot change it, so writes and ` +
+        `searches would both fail.\n` +
+        `Either set AMEM_EMBED_MODEL back to the model this collection was built ` +
+        `with, or migrate: build a new collection with the new model, backfill it, ` +
+        `then point AMEM_COLLECTION at it. See docs/reference/embedding-models.md.`
+    )
+    this.name = 'EmbeddingDimensionMismatchError'
+  }
+}
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 async function qdrant(method: string, path: string, body?: unknown): Promise<unknown> {
@@ -189,16 +213,36 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
     if (collectionName) _collectionReadyMap.set(col, true)
     else _collectionReady = true
   }
+  type CollectionInfo = { config?: { params?: { vectors?: { size?: number } } } }
+  let existing: CollectionInfo | null = null
   try {
-    await qdrant('GET', `/collections/${col}`)
-    markReady()
-    return
+    existing = (await qdrant('GET', `/collections/${col}`)) as CollectionInfo
   } catch {
     // Collection does not exist — create it below
   }
+
+  if (existing) {
+    // Check the dimension NOW rather than letting the first upsert fail. Qdrant
+    // rejects a wrong-width vector at insert time, which surfaces as a raw
+    // storage error in the middle of a working session — long after the change
+    // that caused it, and nowhere near the setting to blame.
+    const collectionDim = existing.config?.params?.vectors?.size
+    if (typeof collectionDim === 'number') {
+      const modelDim = await getEmbeddingDim()
+      if (collectionDim !== modelDim) {
+        throw new EmbeddingDimensionMismatchError(col, collectionDim, modelDim, getEmbeddingModel())
+      }
+    }
+    markReady()
+    return
+  }
+
   try {
+    // Measured, not looked up: a hardcoded table would be silently wrong for any
+    // model not in it, and the collection would be created at the wrong width.
+    const size = await getEmbeddingDim()
     await qdrant('PUT', `/collections/${col}`, {
-      vectors: { size: VECTOR_DIM, distance: 'Cosine' },
+      vectors: { size, distance: 'Cosine' },
     })
   } catch (err) {
     // If another concurrent call already created it, that's fine
@@ -227,8 +271,70 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
   markReady()
 }
 
+// ── Raw access for migration ──────────────────────────────────────────────────
+// These deliberately bypass ensureCollection. A migration reads a collection
+// whose vectors were written by the OLD model, so the dimension check that
+// protects normal operation would reject exactly the read the migration needs.
+
+/** Scroll every point in a collection, no filter, no readiness check. */
+export async function scrollAllRaw(
+  collection: string,
+  limit = 10000
+): Promise<Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>> {
+  const out: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }> = []
+  let offset: unknown = undefined
+  for (;;) {
+    const body: Record<string, unknown> = { with_payload: true, with_vector: true, limit }
+    if (offset !== undefined && offset !== null) body.offset = offset
+    const res = (await qdrant('POST', `/collections/${collection}/points/scroll`, body)) as {
+      points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+      next_page_offset?: unknown
+    }
+    out.push(...res.points)
+    offset = res.next_page_offset
+    if (offset === undefined || offset === null || res.points.length === 0) break
+  }
+  return out
+}
+
+/** How many points a collection holds. Used to verify a backfill. */
+export async function countPointsRaw(collection: string): Promise<number> {
+  const res = (await qdrant('POST', `/collections/${collection}/points/count`, { exact: true })) as {
+    count: number
+  }
+  return res.count
+}
+
+/** The vector width a collection was created with, or null if it does not exist. */
+export async function collectionDimRaw(collection: string): Promise<number | null> {
+  try {
+    const info = (await qdrant('GET', `/collections/${collection}`)) as {
+      config?: { params?: { vectors?: { size?: number } } }
+    }
+    return info.config?.params?.vectors?.size ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Create a collection at an explicit width, with the same payload indexes as ensureCollection. */
+export async function createCollectionRaw(collection: string, size: number): Promise<void> {
+  await qdrant('PUT', `/collections/${collection}`, { vectors: { size, distance: 'Cosine' } })
+  for (const field_name of ['agent_id', 'hash', 'topics', 'subjects']) {
+    await qdrant('PUT', `/collections/${collection}/index`, { field_name, field_schema: 'keyword' })
+  }
+}
+
+/** Upsert prepared points into a collection. */
+export async function upsertPointsRaw(
+  collection: string,
+  points: Array<{ id: string; vector: number[]; payload: Record<string, unknown> }>
+): Promise<void> {
+  await qdrant('PUT', `/collections/${collection}/points?wait=true`, { points })
+}
+
 // ── Payload mapping ───────────────────────────────────────────────────────────
-function noteToPoint(note: MemoryNote) {
+export function noteToPoint(note: MemoryNote) {
   return {
     id: note.id,
     vector: note.embedding,
@@ -273,7 +379,7 @@ function noteToPoint(note: MemoryNote) {
   }
 }
 
-function pointToNote(point: { id: string; payload: Record<string, unknown>; vector?: number[] }): MemoryNote {
+export function pointToNote(point: { id: string; payload: Record<string, unknown>; vector?: number[] }): MemoryNote {
   const p = point.payload
   const timestamp = (p.timestamp as string) || ''
 

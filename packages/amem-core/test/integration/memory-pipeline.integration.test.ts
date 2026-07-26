@@ -33,9 +33,13 @@ vi.mock('../../src/llm.js', () => ({
 }))
 
 // Mock embeddings so no 384-d ONNX model is downloaded; deterministic vectors.
+// getEmbeddingDim is mocked to match fakeEncode's width: storage creates the
+// collection at whatever this returns, and checks an existing one against it.
 vi.mock('../../src/embedding.js', () => ({
   encode: async (t: string) => fakeEncode(t),
   cosineSimilarity: (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0),
+  getEmbeddingDim: async () => 384,
+  getEmbeddingModel: () => 'test/fake-encoder',
 }))
 
 import { addMemory, searchMemory } from '../../src/memory.js'
