@@ -114,7 +114,7 @@ export function rrfMerge(embIds: string[], bm25Ids: string[], k = 60): [string, 
 }
 
 // ── Build embedding text (same as Python) ─────────────────────────────────────
-function buildEmbedText(note: Pick<MemoryNote, 'content' | 'keywords' | 'tags' | 'context'>): string {
+export function buildEmbedText(note: Pick<MemoryNote, 'content' | 'keywords' | 'tags' | 'context'>): string {
   let text = note.content
   if (note.keywords.length) text += ' ' + note.keywords.join(' ')
   if (note.tags.length) text += ' ' + note.tags.join(' ')
