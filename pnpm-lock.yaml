@@ -140,9 +140,6 @@ importers:
       '@qdrant/js-client-rest':
         specifier: ^1.18.0
         version: 1.18.0(typescript@6.0.3)
-      '@types/uuid':
-        specifier: ^11.0.0
-        version: 11.0.0
       openai:
         specifier: ^6.48.0
         version: 6.48.0(zod@4.4.3)
@@ -156,6 +153,9 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
+      '@types/uuid':
+        specifier: ^11.0.0
+        version: 11.0.0
       eslint:
         specifier: ^10.7.0
         version: 10.7.0

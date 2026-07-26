@@ -31,7 +31,7 @@ Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv
 - 🔐 **Per-agent isolation** — private by default; explicit `owner`/`readers`/`writers`; Mode A (shared collection) or Mode B (dedicated collection).
 - 🀄 **Chinese-optimized** & local embeddings (Transformers.js, 384-dim) — no Python, no external embedding API.
 
-→ Full feature list & internals: **[amem-core README](../amem-core)** · **[docs](https://amem.owo.lc)**.
+→ Full feature list & internals: **[@amemhq/core README](../amem-core)** · **[docs](https://amem.owo.lc)**.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv
 
 ```bash
 # From ClawHub (recommended)
-openclaw plugins install clawhub:@heichaowo/openclaw-amem
+openclaw plugins install clawhub:openclaw-amem
 
 # From npm
 openclaw plugins install openclaw-amem
@@ -141,7 +141,7 @@ pnpm --filter openclaw-amem test    # vitest (needs Qdrant on :6333)
 
 ## Docs & References
 
-Full guides, architecture, and academic references: **[amem.owo.lc](https://amem.owo.lc)** · engine: **[amem-core](../amem-core)** · paper: [A-MEM (arXiv:2502.12110)](https://arxiv.org/abs/2502.12110).
+Full guides, architecture, and academic references: **[amem.owo.lc](https://amem.owo.lc)** · engine: **[@amemhq/core](../amem-core)** · paper: [A-MEM (arXiv:2502.12110)](https://arxiv.org/abs/2502.12110).
 
 ## License
 

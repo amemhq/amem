@@ -32,13 +32,13 @@
     "@huggingface/transformers": "^4.2.0",
     "@node-rs/jieba": "^2.0.1",
     "@qdrant/js-client-rest": "^1.18.0",
-    "@types/uuid": "^11.0.0",
     "openai": "^6.48.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
+    "@types/uuid": "^11.0.0",
     "eslint": "^10.7.0",
     "prettier": "^3.9.5",
     "tsup": "^8.4.0",
