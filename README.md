@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="amem Logo" />
+  <img src="https://raw.githubusercontent.com/amemhq/amem/main/docs/public/logo.webp" width="120" alt="amem Logo" />
 </p>
 
 # amem
@@ -9,7 +9,7 @@ Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License: MIT" /></a>
   <a href="https://www.npmjs.com/package/openclaw-amem"><img src="https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white&label=openclaw-amem" alt="npm: openclaw-amem" /></a>
-  <a href="https://github.com/heichaowo/amem/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/heichaowo/amem/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI" /></a>
+  <a href="https://github.com/amemhq/amem/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/amemhq/amem/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI" /></a>
   <a href="https://arxiv.org/abs/2502.12110"><img src="https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge" alt="arXiv" /></a>
 </p>
 

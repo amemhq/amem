@@ -1,7 +1,7 @@
 # openclaw-amem
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="amem logo" />
+  <img src="https://raw.githubusercontent.com/amemhq/amem/main/docs/public/logo.webp" width="120" alt="amem logo" />
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](../../LICENSE)
@@ -20,7 +20,7 @@ Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv
 
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
-⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).
+⭐ Useful? [Star it on GitHub](https://github.com/amemhq/amem).
 
 ## Highlights
 

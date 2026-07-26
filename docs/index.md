@@ -14,7 +14,7 @@ hero:
       link: /guide/introduction
     - theme: alt
       text: View on GitHub
-      link: https://github.com/heichaowo/amem
+      link: https://github.com/amemhq/amem
     - theme: alt
       text: npm
       link: https://www.npmjs.com/package/openclaw-amem

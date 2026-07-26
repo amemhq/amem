@@ -6,7 +6,7 @@ Framework-agnostic **A-MEM agentic memory engine** — memories that **evolve**,
 npm i @amemhq/core
 ```
 
-Extracted from [`openclaw-amem`](https://github.com/heichaowo/amem/tree/main/packages/openclaw-amem) so any host can share one memory engine: an OpenClaw plugin, a standalone service ([`amem-api`](../amem-api)), or a game agent. Part of the [amem monorepo](../../).
+Extracted from [`openclaw-amem`](https://github.com/amemhq/amem/tree/main/packages/openclaw-amem) so any host can share one memory engine: an OpenClaw plugin, a standalone service ([`amem-api`](../amem-api)), or a game agent. Part of the [amem monorepo](../../).
 
 > Based on _A-MEM: Agentic Memory for LLM Agents_ ([arXiv:2502.12110](https://arxiv.org/abs/2502.12110), NeurIPS 2025). For the original research implementation, see [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM).
 
