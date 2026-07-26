@@ -194,12 +194,24 @@ holding its weights resident in the same process as your agent.
 
 Not because of quality — these have no ONNX export that this runtime can load.
 
+The list is long because **the ONNX ecosystem lags the leaderboards badly**.
+Mining the comparison tables on the `Conan-embedding-v2` and `Qwen3-Embedding-8B`
+model cards turned up nothing usable that is not already above: the top of C-MTEB
+and MTEB is mostly 1.5B–8B models published as SafeTensors only, plus API-only
+services. The practical ceiling for in-process Node inference sits well below the
+published state of the art, and the highest-scoring Chinese model that will
+actually load here is `Conan-embedding-v1` — which is non-commercial. That is the
+real constraint on this page, not benchmark quality.
+
 | Model | Why |
 | :--- | :--- |
 | `TencentBAC/Conan-embedding-v2` | No ONNX export anywhere, and a custom `ConanEmbedModel` architecture Transformers.js has no class for. Apache-2.0 with the best scores on this page — 78.31 zh / 66.40 en retrieval — and unreachable. |
 | `lier007/xiaobu-embedding-v2` | Ships `onnx/model.onnx` (1.30 GB), but `modules.json` declares Transformer → Pooling → **Dense(1024→1792)** and the ONNX is a backbone-only export. Loading it gives un-projected 1024-dim vectors — plausible-looking, but not the model that scored 76.50. Also declares no licence. |
+| `richinfoai/ritrieve_zh_v1` | No ONNX export. MIT and only 0.3B for 76.97 C-MTEB retrieval, so worth revisiting if one appears — but it also ends in a `2_Dense` module, so a backbone-only export would not be enough. |
+| `GritLM/GritLM-7B` | No ONNX export. |
 | `BAAI/bge-en-icl` | No ONNX export. |
 | `nvidia/NV-Embed-v2` | No ONNX export. |
+| `text-embedding-3-large`, `Cohere-embed-multilingual-v3.0`, `gemini-embedding-exp` | API-only. amem embeds locally and never sends memory text to an embedding service. |
 | `BAAI/bge-multilingual-gemma2` | No ONNX export anywhere; 37 GB SafeTensors only. |
 | `intfloat/e5-mistral-7b-instruct` | No ONNX export for feature extraction. |
 | `Alibaba-NLP/gte-Qwen2-7B-instruct` | SafeTensors only (30.5 GB); community ONNX request open since Jan 2025. |
