@@ -126,7 +126,7 @@ jobs:
           NOTE=$(awk '/^## /{n++} n==1{print} n==2{exit}' CHANGELOG.md)
           # Code plugins require source attribution; use the exact release commit.
           clawhub --no-input package publish "$RUNNER_TEMP/clawhub-pkg/package" \
-            --family code-plugin --owner heichaowo \
+            --family code-plugin --owner amemhq \
             --source-repo "$GITHUB_REPOSITORY" \
             --source-commit "$GITHUB_SHA" \
             --source-ref "$GITHUB_REF_NAME" \
