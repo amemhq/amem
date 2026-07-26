@@ -44,23 +44,32 @@ you migrate or change it back. Pick before you have data, or migrate deliberatel
 
 | Model (ONNX repo) | zh | en | multi | Dim | Max seq | Params | Licence | Prefix |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- | :--- |
-| `Xenova/bge-m3` | 65.29¹ | not published | — | 1024 | 8192 | 568M | MIT | none |
-| `onnx-community/gte-multilingual-base` | ~69.7² | not published | — | 768 | 8192 | 305M | Apache-2.0 | none |
-| `onnx-community/Qwen3-Embedding-0.6B-ONNX` | 71.03 | not published | — | 1024 | 32768 | 0.6B | Apache-2.0³ | **required** |
-| `intfloat/multilingual-e5-large-instruct` | 63.65 | 53.47 | 65.7 (MIRACL) | 1024 | 512 | 560M | MIT | **required** |
-| `ibm-granite/granite-embedding-311m-multilingual-r2` | not published | 52.6 | 65.2 | 768 | 32768 | 311M | Apache-2.0⁴ | none |
-| `ibm-granite/granite-embedding-97m-multilingual-r2` | not published | 50.1 | 60.3 | 384 | 32768 | 97M | Apache-2.0⁴ | none |
-| `onnx-community/harrier-oss-v1-0.6b-ONNX` | not published | not published | 69.0ᵃ | 1024 | 32768 | 0.6B | MIT | **required** |
-| `onnx-community/harrier-oss-v1-270m-ONNX` | not published | not published | 66.5ᵃ | 640 | 32768 | 270M | MIT | **required** |
-| `onnx-community/embeddinggemma-300m-ONNX` | not published | 69.67ᵃ | 60.9 | 768 | 2048 | 300M | Gemma⁵ | none |
+| `Xenova/bge-m3` | 65.29¹ | not published | **67.8** MIRACL² | 1024 | 8192 | 568M | MIT | none |
+| `onnx-community/gte-multilingual-base` | ~69.7³ | not published | not published | 768 | 8192 | 305M | Apache-2.0 | none |
+| `onnx-community/Qwen3-Embedding-0.6B-ONNX` | 71.03 | not published | not published | 1024 | 32768 | 0.6B | Apache-2.0⁴ | **required** |
+| `intfloat/multilingual-e5-large-instruct` | 63.65 | 53.47 | 65.7 MIRACL | 1024 | 512 | 560M | MIT | **required** |
+| `ibm-granite/granite-embedding-311m-multilingual-r2` | not published | 52.6 | 65.2 MTEB-multi | 768 | 32768 | 311M | Apache-2.0⁵ | none |
+| `ibm-granite/granite-embedding-97m-multilingual-r2` | not published | 50.1 | 60.3 MTEB-multi | 384 | 32768 | 97M | Apache-2.0⁵ | none |
+| `onnx-community/harrier-oss-v1-0.6b-ONNX` | not published | not published | 69.0 MTEB-multiᵃ | 1024 | 32768 | 0.6B | MIT | **required** |
+| `onnx-community/harrier-oss-v1-270m-ONNX` | not published | not published | 66.5 MTEB-multiᵃ | 640 | 32768 | 270M | MIT | **required** |
+| `onnx-community/embeddinggemma-300m-ONNX` | not published | 69.67ᵃ | 60.9 MTEB-multi | 768 | 2048 | 300M | Gemma⁶ | none |
 | `Xenova/LaBSE` | not published | not published | not published | 768 | 512 | 470M | Apache-2.0 | none |
 
+**MIRACL and MTEB-multi are different benchmarks** and their numbers are not
+comparable with each other. Only the two MIRACL figures — bge-m3's 67.8 and
+multilingual-e5-large-instruct's 65.7 — can be read against one another, and even
+then over 18 versus 16 languages.
+
 1. Dense-only, averaged over 8 C-MTEB retrieval sub-tasks (arXiv:2402.03216).
-2. Sources disagree between ~69.7 and 71.95 depending on evaluation split.
-3. Apache-2.0 is declared, but [an open issue](https://github.com/QwenLM/Qwen3-Embedding/issues/166)
+2. MIRACL, dense, nDCG@10, averaged over 18 languages (arXiv:2402.03216 Table 2).
+   Within that average, Chinese is 61.7 and English 56.9. The model covers 100+
+   languages and its cross-lingual MKQA result is Recall@100 75.1 — a different
+   metric again, so it is not in the table.
+3. Sources disagree between ~69.7 and 71.95 depending on evaluation split.
+4. Apache-2.0 is declared, but [an open issue](https://github.com/QwenLM/Qwen3-Embedding/issues/166)
    questions MS MARCO (non-commercial) training data, unanswered as of July 2026.
-4. Tokenizer derives from Gemma 3 and carries Google's Gemma Terms of Use.
-5. Custom Google licence; requires accepting terms on HuggingFace before download.
+5. Tokenizer derives from Gemma 3 and carries Google's Gemma Terms of Use.
+6. Custom Google licence; requires accepting terms on HuggingFace before download.
 
 ᵃ Aggregate across all MTEB task types, **not** a retrieval score. Not comparable
 with the retrieval numbers in the other columns.
