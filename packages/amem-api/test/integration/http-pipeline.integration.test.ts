@@ -30,6 +30,10 @@ vi.mock('../../../amem-core/src/embedding.js', () => ({
   cosineSimilarity: (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0),
   isModelLoaded: () => true,
   loadModel: async () => {},
+  // Storage measures the vector width through these before creating or
+  // validating a collection; they must agree with fakeEncode.
+  getEmbeddingDim: async () => 384,
+  getEmbeddingModel: () => 'test/fake-encoder',
 }))
 vi.mock('../../../amem-core/src/llm.js', () => ({
   llmConstructNote: async () => ({
