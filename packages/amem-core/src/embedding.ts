@@ -1,25 +1,59 @@
 /**
  * embedding.ts — Local ONNX embedding via @huggingface/transformers
- * Model: Xenova/paraphrase-multilingual-MiniLM-L12-v2 (384-dim)
  * Matches Python: SentenceTransformer.encode(text, normalize_embeddings=True)
+ *
+ * The model is selectable because the default is not a good retrieval model: it
+ * caps at 128 tokens, so anything longer is truncated before it reaches the
+ * vector. Changing it is a breaking change whenever the dimension differs —
+ * Qdrant fixes a collection's vector size at creation — so the default stays put
+ * and the switch is opt-in. See docs/reference/embedding-models.md.
  */
 
 // Dynamic import to avoid issues with CJS bundling
 let pipeline: any = null
 let extractor: any = null
+let loadedModelName: string | null = null
+let cachedDim: number | null = null
 
-const MODEL_NAME = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'
+/** The model shipped since the beginning. Not changed here on purpose. */
+export const DEFAULT_EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'
+
+/** Which model this process embeds with. */
+export function getEmbeddingModel(): string {
+  return process.env.AMEM_EMBED_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL
+}
 
 async function getExtractor() {
-  if (extractor) return extractor
+  const wanted = getEmbeddingModel()
+  // Re-resolving on every call keeps the env var honest in tests and lets a
+  // long-lived process pick up a change without a restart; the cached vector
+  // dimension belongs to the OLD model, so drop it with the extractor.
+  if (extractor && loadedModelName === wanted) return extractor
   if (!pipeline) {
     const mod = await import('@huggingface/transformers')
     pipeline = mod.pipeline
   }
-  extractor = await pipeline('feature-extraction', MODEL_NAME, {
+  extractor = await pipeline('feature-extraction', wanted, {
     revision: 'main',
   })
+  loadedModelName = wanted
+  cachedDim = null
   return extractor
+}
+
+/**
+ * The vector width this model produces, measured rather than looked up.
+ *
+ * A hardcoded table would be wrong the moment someone points AMEM_EMBED_MODEL at
+ * something not in it, and wrong silently — the collection would be created with
+ * the wrong size and every insert would fail. Encoding one short string costs one
+ * forward pass on a model that has to load anyway, and is right for any model.
+ */
+export async function getEmbeddingDim(): Promise<number> {
+  if (cachedDim !== null && loadedModelName === getEmbeddingModel()) return cachedDim
+  const probe = await encode('dimension probe')
+  cachedDim = probe.length
+  return cachedDim
 }
 
 /**
