@@ -90,6 +90,18 @@ compatibility signal as exists. It is **non-commercial only** — fine for perso
 use, not something to build a product on. Its 512-token window is still four times
 the current default's.
 
+::: warning Conan-embedding-v2 is better in every way except the one that matters
+v2 is Apache-2.0 (v1 is not), scores **78.31** on C-MTEB retrieval and **66.40** on
+MTEB English retrieval — the best numbers on this page in both languages — and
+takes 32768 tokens.
+
+It has **no ONNX export**: not in `TencentBAC/Conan-embedding-v2`, and no
+`onnx-community` or `Xenova` conversion exists. Its architecture is a custom
+`ConanEmbedModel` built on a from-scratch 1.4B LLM, so even an export would need
+Transformers.js to add support for it. The usable Conan is v1; the good Conan is
+v2.
+:::
+
 ## English-focused
 
 Chinese is unpublished for all of these because the backbones are English-only;
@@ -184,6 +196,10 @@ Not because of quality — these have no ONNX export that this runtime can load.
 
 | Model | Why |
 | :--- | :--- |
+| `TencentBAC/Conan-embedding-v2` | No ONNX export anywhere, and a custom `ConanEmbedModel` architecture Transformers.js has no class for. Apache-2.0 with the best scores on this page — 78.31 zh / 66.40 en retrieval — and unreachable. |
+| `lier007/xiaobu-embedding-v2` | Ships `onnx/model.onnx` (1.30 GB), but `modules.json` declares Transformer → Pooling → **Dense(1024→1792)** and the ONNX is a backbone-only export. Loading it gives un-projected 1024-dim vectors — plausible-looking, but not the model that scored 76.50. Also declares no licence. |
+| `BAAI/bge-en-icl` | No ONNX export. |
+| `nvidia/NV-Embed-v2` | No ONNX export. |
 | `BAAI/bge-multilingual-gemma2` | No ONNX export anywhere; 37 GB SafeTensors only. |
 | `intfloat/e5-mistral-7b-instruct` | No ONNX export for feature extraction. |
 | `Alibaba-NLP/gte-Qwen2-7B-instruct` | SafeTensors only (30.5 GB); community ONNX request open since Jan 2025. |
@@ -215,6 +231,13 @@ IR 10. Nothing on this page is excluded on IR grounds any more.
   AVX2-specific quantization may misbehave on ARM; prefer fp32 on Apple Silicon.
 - **`onnx-community/bge-m3-ONNX`** ships a 2-byte, broken `model_fp16.onnx`. Use
   `Xenova/bge-m3` instead.
+- **Check `modules.json` before trusting any ONNX.** Sentence-Transformers models
+  can end in a `Dense` projection after pooling, and a stock Optimum export covers
+  the transformer backbone only. Transformers.js does its own pooling but has no
+  notion of a Dense head, so a model whose `modules.json` lists three modules will
+  silently produce vectors of the wrong width and the wrong content. Two modules —
+  Transformer and Pooling — is what you want. This is what rules out
+  `xiaobu-embedding-v2`, and it fails quietly rather than loudly.
 
 ## Dimension barely matters at this scale
 
