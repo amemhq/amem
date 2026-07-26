@@ -188,7 +188,13 @@ holding its weights resident in the same process as your agent.
   been measured on this runtime. Compare parameter counts instead: the current
   default is 118M, so `bge-m3` at 568M is roughly five times the work per encode
   and `Qwen3-Embedding-4B` is roughly thirty-four times.
-- Inference runs on **CPU**. Apple Silicon's neural engine is not used.
+- Inference runs on **CPU today** — but by configuration, not by limitation.
+  Transformers.js lists `coreml` (macOS), `dml` (Windows), `cuda` (Linux x64) and
+  `webgpu` as supported devices on Node, and defaults to `cpu`. amem does not pass
+  a `device`, so it takes that default. Whether any accelerator is actually faster
+  here is **unmeasured**: CoreML partitions a graph op by op and can be slower than
+  CPU for some models, so this is a thing to measure before enabling, not a free
+  win to assume.
 
 ## Not usable today
 
