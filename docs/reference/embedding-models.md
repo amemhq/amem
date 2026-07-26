@@ -190,37 +190,51 @@ holding its weights resident in the same process as your agent.
   and `Qwen3-Embedding-4B` is roughly thirty-four times.
 - Inference runs on **CPU**. Apple Silicon's neural engine is not used.
 
-## Ruled out
+## Not usable today
 
-Not because of quality — these have no ONNX export that this runtime can load.
+Almost everything at the top of C-MTEB and MTEB is out of reach, and **it is the
+runtime that puts it there, not the models**. The top of both leaderboards is
+1.5B–8B models published as SafeTensors only. The best Chinese model that actually
+loads here is `Conan-embedding-v1`, which is non-commercial.
 
-The list is long because **the ONNX ecosystem lags the leaderboards badly**.
-Mining the comparison tables on the `Conan-embedding-v2` and `Qwen3-Embedding-8B`
-model cards turned up nothing usable that is not already above: the top of C-MTEB
-and MTEB is mostly 1.5B–8B models published as SafeTensors only, plus API-only
-services. The practical ceiling for in-process Node inference sits well below the
-published state of the art, and the highest-scoring Chinese model that will
-actually load here is `Conan-embedding-v1` — which is non-commercial. That is the
-real constraint on this page, not benchmark quality.
+These are listed rather than dropped, with the specific blocker and what would
+lift it, because **most of the blockers are properties of our runtime choice, not
+of the model**. If amem ever moves off Transformers.js, this table is the
+re-filtering list — "no ONNX export" stops mattering the moment ONNX stops being
+the only format we can load.
 
-| Model | Why |
-| :--- | :--- |
-| `TencentBAC/Conan-embedding-v2` | No ONNX export anywhere, and a custom `ConanEmbedModel` architecture Transformers.js has no class for. Apache-2.0 with the best scores on this page — 78.31 zh / 66.40 en retrieval — and unreachable. |
-| `lier007/xiaobu-embedding-v2` | Ships `onnx/model.onnx` (1.30 GB), but `modules.json` declares Transformer → Pooling → **Dense(1024→1792)** and the ONNX is a backbone-only export. Loading it gives un-projected 1024-dim vectors — plausible-looking, but not the model that scored 76.50. Also declares no licence. |
-| `richinfoai/ritrieve_zh_v1` | No ONNX export. MIT and only 0.3B for 76.97 C-MTEB retrieval, so worth revisiting if one appears — but it also ends in a `2_Dense` module, so a backbone-only export would not be enough. |
-| `GritLM/GritLM-7B` | No ONNX export. |
-| `BAAI/bge-en-icl` | No ONNX export. |
-| `nvidia/NV-Embed-v2` | No ONNX export. |
-| `text-embedding-3-large`, `Cohere-embed-multilingual-v3.0`, `gemini-embedding-exp` | API-only. amem embeds locally and never sends memory text to an embedding service. |
-| `BAAI/bge-multilingual-gemma2` | No ONNX export anywhere; 37 GB SafeTensors only. |
-| `intfloat/e5-mistral-7b-instruct` | No ONNX export for feature extraction. |
-| `Alibaba-NLP/gte-Qwen2-7B-instruct` | SafeTensors only (30.5 GB); community ONNX request open since Jan 2025. |
-| `Alibaba-NLP/gte-Qwen2-1.5B-instruct` | SafeTensors only; no conversion exists. |
-| `NovaSearch/stella_en_1.5B_v5` | ONNX exists but the full set is 19.5 GB. |
-| `infgrad/jasper_en_vision_language_v1` | No ONNX export. |
-| `jina-embeddings-v3` | Architecture unsupported by Transformers.js ([issue #1072](https://github.com/huggingface/transformers.js/issues/1072), closed unimplemented), and it requires a `task_id` input tensor that text-only calling code cannot supply. |
-| `jina-embeddings-v4` | 4B params, no ONNX export, Qwen Research License. |
-| `jina-embeddings-v5-*` | CC BY-NC 4.0. The `text-nano` variant's EuroBERT architecture is also unsupported ([issue #1628](https://github.com/huggingface/transformers.js/issues/1628)). |
+Models with **no open weights at all** are excluded outright and are not in the
+table: `text-embedding-3-large` (OpenAI), `Cohere-embed-multilingual-v3.0`,
+`gemini-embedding-exp`. There is nothing to load, and sending memory text to an
+embedding service is against amem's design regardless.
+
+Chinese and English figures below come from the `Qwen3-Embedding-8B` and
+`Conan-embedding-v2` model cards — C-MTEB retrieval and MTEB(eng, v2) retrieval,
+NDCG@10, one leaderboard snapshot each — so they are comparable *within* a column.
+
+| Model | zh | en | Weights | Blocked by | Would be unblocked by |
+| :--- | ---: | ---: | :--- | :--- | :--- |
+| `TencentBAC/Conan-embedding-v2` | **78.31** | **66.40** | SafeTensors, Apache-2.0, 1.48B | No ONNX anywhere; custom `ConanEmbedModel` architecture | An ONNX or GGUF export **and** runtime support for the architecture |
+| `Alibaba-NLP/gte-Qwen2-7B-instruct` | 75.70 | 58.09 | SafeTensors 30.5 GB, 7.6B | No ONNX ([request open since Jan 2025](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct/discussions/49)); too large for a consumer machine at fp32 | A quantized export — needs both a format we can load and ~8 GB of RAM |
+| `richinfoai/ritrieve_zh_v1` | 76.97 | not published | SafeTensors, **MIT**, 0.3B | No ONNX; ends in a `2_Dense` module so a backbone-only export is not enough | A *full-pipeline* export including the Dense head. The best value on this table — MIT and small |
+| `lier007/xiaobu-embedding-v2` | 76.50 | not published | SafeTensors + partial ONNX, **no licence declared** | `onnx/model.onnx` is backbone-only; `modules.json` declares Dense(1024→1792) | A full-pipeline export **and** a declared licence |
+| `BAAI/bge-multilingual-gemma2` | 73.73 | 59.24 | SafeTensors 37 GB, 9B | No ONNX; too large | A quantized export |
+| `Alibaba-NLP/gte-Qwen2-1.5B-instruct` | 71.86 | 50.25 | SafeTensors, 1.5B | No ONNX | Any loadable export |
+| `intfloat/e5-mistral-7b-instruct` | 61.75 | 57.62 | SafeTensors, 7B | No ONNX for feature extraction; too large | A quantized export |
+| `nvidia/NV-Embed-v2` | not published | 62.84 | SafeTensors, 7.8B | No ONNX; too large | A quantized export |
+| `BAAI/bge-en-icl` | not published | 62.16 | SafeTensors, 7B | No ONNX; too large | A quantized export |
+| `NovaSearch/stella_en_1.5B_v5` | not published | 52.42 | SafeTensors + ONNX, 1.5B | ONNX exists but the full set is 19.5 GB | A smaller quantized ONNX |
+| `GritLM/GritLM-7B` | not published | 54.95 | SafeTensors, Apache-2.0, 7B | No ONNX; too large | A quantized export |
+| `jinaai/jina-embeddings-v3` | 68.60ᶜ | not published | ONNX exists | Architecture unsupported by Transformers.js ([#1072](https://github.com/huggingface/transformers.js/issues/1072), closed unimplemented); needs a `task_id` input tensor that text-only calling code cannot supply | A runtime supporting the architecture, **plus** calling-code changes to pass `task_id` |
+| `jinaai/jina-embeddings-v4` | not published | not published | SafeTensors, 4B, Qwen Research Licence | No ONNX; non-permissive licence | A loadable export — but the licence still bars it as a default |
+| `jinaai/jina-embeddings-v5-*` | not published | 58.80 | ONNX, **CC BY-NC 4.0** | Licence bars it as a default; `text-nano`'s EuroBERT architecture is unsupported ([#1628](https://github.com/huggingface/transformers.js/issues/1628)) | Nothing — licence is not a runtime problem. Usable as a personal opt-in if the architecture lands |
+| `infgrad/jasper_en_vision_language_v1` | not published | not published | SafeTensors | No ONNX | Any loadable export |
+
+ᶜ C-MTEB score from an earlier snapshot; not from the two model cards above.
+
+Read the last column as a watchlist. **"A quantized export"** covers most of it,
+and that is exactly what the GGUF ecosystem already has for several of these —
+which is why the runtime choice, not this table, is the thing to revisit.
 
 ::: tip The old IR-9 ceiling no longer applies
 Earlier versions of this page ruled models out for exporting at ONNX IR version 10.
