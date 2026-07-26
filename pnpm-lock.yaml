@@ -42,7 +42,7 @@ importers:
   packages/amem-api:
     dependencies:
       '@amemhq/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../amem-core
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
