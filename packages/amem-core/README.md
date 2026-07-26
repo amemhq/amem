@@ -45,7 +45,7 @@ Unlike a flat vector store, A-MEM maintains memory as a living, self-evolving se
 host (OpenClaw plugin / amem-api / game agent)
      │  addMemory / searchMemory / consolidate ...
      ▼
-  amem-core (TypeScript)
+  @amemhq/core (TypeScript)
      ├── LLM (Anthropic)        note construction · link judgment · CRUD · evolution
      ├── Transformers.js (ONNX) 384-dim local embeddings + Jieba BM25
      └── Qdrant :6333           vector store · owner/readers/writers · agent_id isolation
@@ -53,7 +53,7 @@ host (OpenClaw plugin / amem-api / game agent)
 
 ## Memory Evolution
 
-When a new note is borderline-similar to an existing one (cosine 0.72–0.85), amem-core routes it through an **LLM evolution judgment** instead of naive dedup, classifying the relationship:
+When a new note is borderline-similar to an existing one (cosine 0.72–0.85), @amemhq/core routes it through an **LLM evolution judgment** instead of naive dedup, classifying the relationship:
 
 | Type | Meaning | Action |
 | --- | --- | --- |

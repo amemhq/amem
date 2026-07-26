@@ -1,4 +1,4 @@
-# @heichaowo/amem-core
+# @amemhq/core
 
 ## 0.5.0
 
