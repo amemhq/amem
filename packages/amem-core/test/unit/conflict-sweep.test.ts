@@ -52,6 +52,12 @@ function note(over: Partial<MemoryNote> & Pick<MemoryNote, 'id' | 'content' | 't
 const OLD = note({ id: 'aaa', content: 'user is vegetarian', timestamp: '2026-01-01T00:00:00.000Z' })
 const NEW = note({ id: 'bbb', content: 'user loved the steak', timestamp: '2026-06-01T00:00:00.000Z' })
 
+// The sweep sorts each category newest-first, so a note written today lands
+// beside the notes it is most likely to contradict. That makes index 0 the NEWER
+// note and index 1 the older one — the indices below follow that, deliberately.
+const I_NEW = 0
+const I_OLD = 1
+
 function makeCtx(notes: MemoryNote[]) {
   return {
     listNotes: vi.fn(async () => notes),
@@ -64,6 +70,14 @@ beforeEach(() => {
   conflictScan.mockReset()
   vi.unstubAllEnvs()
 })
+
+/**
+ * The conflict marks only. Every scanned batch also gets a
+ * `conflict_scanned_at` bookkeeping patch, which is not what these assertions
+ * are about — counting raw patch calls would couple them to that detail.
+ */
+const conflictMarks = (ctx: StorageContext) =>
+  vi.mocked(ctx.patchNotePayload).mock.calls.filter((c) => (c[1] as Record<string, unknown>).conflict === true)
 afterEach(() => vi.unstubAllEnvs())
 
 describe('conflictSweep — review mode (default)', () => {
@@ -76,7 +90,7 @@ describe('conflictSweep — review mode (default)', () => {
     expect(res).toMatchObject({ pairsFound: 1, retired: 0 })
     expect(ctx.invalidateNote).not.toHaveBeenCalled()
 
-    const patches = vi.mocked(ctx.patchNotePayload).mock.calls
+    const patches = conflictMarks(ctx)
     expect(patches).toHaveLength(2)
     const byId = Object.fromEntries(patches.map((c) => [c[0], c[1] as Record<string, unknown>]))
     expect(byId['aaa']).toMatchObject({ conflict: true, conflicts_with: ['bbb'], conflict_reason: 'diet' })
@@ -90,13 +104,13 @@ describe('conflictSweep — review mode (default)', () => {
     const res = await conflictSweep('main', { storageCtx: ctx })
 
     expect(res.pairsFound).toBe(0)
-    expect(ctx.patchNotePayload).not.toHaveBeenCalled()
+    expect(conflictMarks(ctx)).toHaveLength(0)
   })
 })
 
 describe('conflictSweep — auto mode', () => {
   it('retires the side the MODEL named as superseded', async () => {
-    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: 0 }])
+    conflictScan.mockResolvedValue([{ a: I_NEW, b: I_OLD, reason: 'diet', supersededIndex: I_OLD }])
     const ctx = makeCtx([OLD, NEW])
 
     const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
@@ -111,7 +125,7 @@ describe('conflictSweep — auto mode', () => {
     const ctx = makeCtx([OLD, NEW])
 
     await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
-    expect(ctx.patchNotePayload).toHaveBeenCalledTimes(2)
+    expect(conflictMarks(ctx)).toHaveLength(2)
   })
 
   it('is opt-in: AMEM_CONFLICT_MODE selects it, and anything else means review', async () => {
@@ -138,7 +152,8 @@ describe('conflictSweep — what it refuses to scan', () => {
     const res = await conflictSweep('main', { storageCtx: ctx })
 
     expect(res.scanned).toBe(2)
-    expect(conflictScan.mock.calls[0][0]).toEqual([OLD.content, NEW.content])
+    // newest-first, so NEW leads
+    expect(conflictScan.mock.calls[0][0]).toEqual([NEW.content, OLD.content])
   })
 
   it('does not call the model for a category with only one note', async () => {
@@ -165,19 +180,82 @@ describe('conflictSweep — the wall clock is not evidence', () => {
     expect(res.pairsFound).toBe(1)
     expect(res.retired).toBe(0)
     expect(ctx.invalidateNote).not.toHaveBeenCalled()
-    expect(ctx.patchNotePayload).toHaveBeenCalledTimes(2) // still visible for review
+    expect(conflictMarks(ctx)).toHaveLength(2) // still visible for review
   })
 
   it('retires the note written LATER when that is the one the model calls superseded', async () => {
     // The case an ingestion-time heuristic gets exactly backwards: a memory about
     // the past ("back in 2019 I was vegetarian") recorded today is the NEWER row
     // and the OLDER fact. Retiring by timestamp would silence the current one.
-    conflictScan.mockResolvedValue([{ a: 0, b: 1, reason: 'diet', supersededIndex: 1 }])
+    conflictScan.mockResolvedValue([{ a: I_NEW, b: I_OLD, reason: 'diet', supersededIndex: I_NEW }])
     const ctx = makeCtx([OLD, NEW])
 
     const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
 
     expect(res.retired).toBe(1)
     expect(vi.mocked(ctx.invalidateNote).mock.calls[0][0]).toBe('bbb') // the LATER-written note
+  })
+})
+
+describe('conflictSweep — incremental re-reading', () => {
+  const scanned = (id: string, ts: string, at?: string) =>
+    note({ id, content: `note ${id}`, timestamp: ts, conflict_scanned_at: at })
+
+  it('skips a batch whose notes have all been read before', async () => {
+    conflictScan.mockResolvedValue([])
+    const ctx = makeCtx([
+      scanned('a', '2026-01-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z'),
+      scanned('b', '2026-01-02T00:00:00.000Z', '2026-06-01T00:00:00.000Z'),
+    ])
+
+    const res = await conflictSweep('main', { storageCtx: ctx })
+
+    expect(conflictScan).not.toHaveBeenCalled()
+    expect(res.batchesScanned).toBe(0)
+    expect(res.batchesSkipped).toBe(1)
+  })
+
+  it('reads a batch again once it gains an unscanned note', async () => {
+    conflictScan.mockResolvedValue([])
+    const ctx = makeCtx([
+      scanned('a', '2026-01-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z'),
+      scanned('b', '2026-07-01T00:00:00.000Z'), // new: never scanned
+    ])
+
+    const res = await conflictSweep('main', { storageCtx: ctx })
+
+    expect(conflictScan).toHaveBeenCalledOnce()
+    expect(res.batchesScanned).toBe(1)
+  })
+
+  it('marks every note in a scanned batch, not just the ones in a pair', async () => {
+    // The unit judged is the batch as a whole; marking only paired notes would
+    // make the same batch look unread and cost a call every night forever.
+    conflictScan.mockResolvedValue([])
+    const ctx = makeCtx([
+      scanned('a', '2026-01-01T00:00:00.000Z'),
+      scanned('b', '2026-01-02T00:00:00.000Z'),
+    ])
+
+    await conflictSweep('main', { storageCtx: ctx })
+
+    const marked = vi
+      .mocked(ctx.patchNotePayload)
+      .mock.calls.filter((c) => (c[1] as Record<string, unknown>).conflict_scanned_at)
+      .map((c) => c[0])
+    expect(marked.sort()).toEqual(['a', 'b'])
+  })
+
+  it('force re-reads batches that were already scanned', async () => {
+    conflictScan.mockResolvedValue([])
+    const ctx = makeCtx([
+      scanned('a', '2026-01-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z'),
+      scanned('b', '2026-01-02T00:00:00.000Z', '2026-06-01T00:00:00.000Z'),
+    ])
+
+    const res = await conflictSweep('main', { storageCtx: ctx, force: true })
+
+    expect(conflictScan).toHaveBeenCalledOnce()
+    expect(res.batchesScanned).toBe(1)
   })
 })

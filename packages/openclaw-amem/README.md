@@ -8,13 +8,16 @@
 [![npm](https://img.shields.io/npm/v/openclaw-amem?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/openclaw-amem)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
 
-**Agentic memory for [OpenClaw](https://github.com/openclaw/openclaw)** — memories **evolve**, not just accumulate.
+**Long-term memory for [OpenClaw](https://github.com/openclaw/openclaw) agents.**
 
-Notes link themselves into a graph and are retrieved by a hybrid of BM25 and dense search with 2-hop graph expansion. Memories stay separated **per agent** and **per person**, so one character can remember several people without mixing them up. Backed by Qdrant + local Transformers.js — and it runs fine on a cheap or local model. **No Python required.**
+Extracts facts from conversations instead of storing transcripts, links related ones into a Zettelkasten-style graph, and retrieves them with hybrid BM25 + dense search over 2-hop graph expansion. Memories are scoped per agent (`owner`/`readers`/`writers`) and per subject, both enforced inside the Qdrant query rather than filtered after it. A nightly pass re-reads what changed and flags memories that contradict each other.
 
-Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110).
+Runs on a small model — `gpt-4o-mini`, `haiku`, a local Ollama. No Python.
 
-> 🧠 The memory **engine** lives in **[`amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
+中文走 [jieba](https://github.com/messense/node-jieba) 分词，提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`），embedding 模型本身多语言。
+
+Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@heichaowo/amem-core`](../amem-core).
+
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
 ⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).

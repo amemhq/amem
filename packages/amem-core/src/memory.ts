@@ -1046,6 +1046,8 @@ export interface ConflictSweepResult {
   scanned: number
   pairsFound: number
   retired: number
+  batchesScanned: number
+  batchesSkipped: number
 }
 
 /**
@@ -1063,9 +1065,17 @@ export interface ConflictSweepResult {
  */
 export async function conflictSweep(
   agentId: string,
-  opts?: { mode?: ConflictMode; storageCtx?: StorageContext; logger?: { info: (m: string) => void } }
+  opts?: {
+    mode?: ConflictMode
+    storageCtx?: StorageContext
+    logger?: { info: (m: string) => void }
+    /** Re-read every batch, including ones already judged. For a full re-sweep
+     * after changing the prompt or the model. */
+    force?: boolean
+  }
 ): Promise<ConflictSweepResult> {
   const ctx = opts?.storageCtx ?? defaultCtx()
+  const force = opts?.force === true
   const mode = resolveConflictMode(opts?.mode)
   const log = opts?.logger?.info ?? ((m: string) => console.log(m))
 
@@ -1084,10 +1094,33 @@ export async function conflictSweep(
   let pairsFound = 0
   let retired = 0
 
+  let batchesScanned = 0
+  let batchesSkipped = 0
+
   for (const [category, groupNotes] of groups.entries()) {
+    // Newest first, so a note written today batches with the most recent notes
+    // in its category — the ones it is most likely to contradict.
+    groupNotes.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+
     for (let start = 0; start < groupNotes.length; start += CONFLICT_BATCH_SIZE) {
       const batch = groupNotes.slice(start, start + CONFLICT_BATCH_SIZE)
       if (batch.length < 2) continue
+
+      // Skip a batch the model has already read in full. Without this the sweep
+      // re-judges every old pair every night: ~40 calls a run here, growing with
+      // the store, to re-derive answers it already had. With it, a run costs one
+      // call per batch that actually gained a note.
+      //
+      // The tradeoff, stated plainly: a new note is compared against the batch
+      // it lands in, not against the category's entire history. Contradictions
+      // between two OLD notes that were never batched together are not found.
+      // That is the price of not paying for a full re-read daily; a full sweep
+      // is still available by clearing conflict_scanned_at.
+      if (!force && batch.every((n) => n.conflict_scanned_at)) {
+        batchesSkipped++
+        continue
+      }
+      batchesScanned++
 
       const pairs = await llmConflictScan(batch.map((n) => n.content))
       for (const { a, b, reason, supersededIndex } of pairs) {
@@ -1133,9 +1166,19 @@ export async function conflictSweep(
           }
         }
       }
+
+      // Mark the whole batch, not just the notes in a pair: what was judged is
+      // the batch as a set, so re-reading it would ask the same question again.
+      const scannedAt = new Date().toISOString()
+      for (const n of batch) {
+        await ctx.patchNotePayload(n.id, { conflict_scanned_at: scannedAt })
+      }
     }
   }
 
-  log(`[conflict] scanned ${notes.length} notes, found ${pairsFound} pair(s), retired ${retired}`)
-  return { scanned: notes.length, pairsFound, retired }
+  log(
+    `[conflict] ${batchesScanned} batch(es) scanned, ${batchesSkipped} already up to date; ` +
+      `${pairsFound} pair(s) found, ${retired} retired`
+  )
+  return { scanned: notes.length, pairsFound, retired, batchesScanned, batchesSkipped }
 }

@@ -23,26 +23,28 @@ Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not
 
 📖 Documentation: **[amem.owo.lc](https://amem.owo.lc)** · 📄 Paper: [A-MEM (arXiv:2502.12110, NeurIPS 2025)](https://arxiv.org/abs/2502.12110)
 
-## Choosing models
+## Models
 
-amem runs its own LLM calls in two tiers, because they are not equally hard:
+Two tiers, because the calls are not equally hard. `fast` runs everything frequent:
+extraction, link judgement, the per-turn CRUD decision. `strong` runs only merge
+adjudication and contradiction classification.
 
-- **fast** — nearly every call (extract keywords/tags, judge links, the per-turn
-  CRUD decision). Configure a **cheap, quick** model here; local models are fine.
-- **strong** — *optional*, and only for the genuinely hard judgements (should two
-  memories merge, does this contradict what is stored). Configure a **more
-  capable** model, or skip it entirely.
+| tier | env | plugin config |
+| --- | --- | --- |
+| fast | `AMEM_LLM_MODEL` | `llmModel` |
+| strong | `AMEM_LLM_STRONG_MODEL` | `llmStrongModel` |
 
-**Configure one model and everything runs on it** — that is the default. The
-strong tier is opt-in, and each of its fields falls back to the fast one, so you
-can set just a better model, or point the two tiers at completely different
-backends (e.g. a local Ollama for fast, a hosted API for strong).
+`strong` is optional and falls back to `fast` field by field, so setting only
+`llmStrongModel` keeps the same provider and endpoint with a better model, and
+setting all three `llmStrong*` fields runs the tiers on separate backends — a
+local Ollama for `fast`, a hosted API for `strong`. Set none and it behaves as a
+single-model install. There is no built-in `strong` default: an upgrade never
+starts spending more on its own.
 
-amem does **not** need a frontier model. For extraction a cheap model scores
-within ~2 points of a strong one; the gap only opens up on contradiction
-detection, which is why exactly those calls get their own tier.
-
-→ [Choosing models](https://amem.owo.lc/reference/configuration#choosing-models-a-fast-one-and-optionally-a-strong-one) · [Design Rationale](https://amem.owo.lc/guide/design-rationale)
+The split is worth the config because the gap is uneven. Extraction differs about
+2 points between a cheap model and a strong one; contradiction detection differs
+17–21, and implicit contradictions collapse from 55% to 8.7%. Sources and the
+rest of the reasoning: [Design Rationale](https://amem.owo.lc/guide/design-rationale).
 
 ## Develop
 

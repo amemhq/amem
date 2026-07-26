@@ -141,9 +141,7 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
   const genLabel = LOCALE === 'zh' ? '生成时间' : 'Generated'
   const countLabel = LOCALE === 'zh' ? `共 ${items.length} 条低质量条目` : `${items.length} low-quality item(s)`
   const applyHint =
-    LOCALE === 'zh'
-      ? '选好后可使用 memory_quality_apply 批量处理'
-      : 'Use memory_quality_apply to batch-process selected items'
+    LOCALE === 'zh' ? '勾选后交给助手处理这些条目' : 'Tick your choices, then ask the assistant to act on them'
 
   lines.push(`# ${title} — Batch ${batchN || 'custom'}`)
   lines.push('')

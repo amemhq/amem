@@ -24,6 +24,7 @@ import {
   generateReviewBatch,
   configure,
   configureLlm,
+  conflictSweep,
   isPlausibleUpdateTarget,
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
@@ -90,6 +91,14 @@ function register(api: {
       }),
     })
   }
+
+  // Story 43: the nightly contradiction sweep. On by default — it is the safety
+  // net for running the per-turn CRUD decision on the fast model, and a net that
+  // is off by default is not a net. It is cheap because it only re-reads batches
+  // that gained a note, and it runs on whatever tier is configured: with no
+  // `strong` model set it uses the fast one, so an existing install does not
+  // silently start spending more.
+  const conflictSweepEnabled = pluginConfig.conflictSweep !== false
 
   // Story 41: similarity floor for accepting an LLM-chosen CRUD UPDATE target.
   // Undefined here just means "use the engine default"; the env var still wins.
@@ -594,6 +603,31 @@ function register(api: {
         }
       } catch (err) {
         logger.warn(`openclaw-amem: Scheduled daily consolidation failed — ${(err as Error).message}`)
+      }
+
+      // Story 43: the cold half of the tiering split. The per-turn CRUD decision
+      // runs on the fast model, which is safe but misses contradictions; this is
+      // what catches them. Runs AFTER consolidation, and in its own try/catch, so
+      // neither task can take the other down.
+      //
+      // Only batches that gained a note since the last run are re-read, so a
+      // steady-state night costs a call or two rather than a full re-read.
+      if (conflictSweepEnabled) {
+        try {
+          const res = await conflictSweep(defaultScope.agentId, {
+            storageCtx: defaultScope.storageCtx,
+            logger,
+          })
+          if (res.pairsFound > 0) {
+            logger.info(
+              `openclaw-amem: Contradiction sweep flagged ${res.pairsFound} pair(s)` +
+                (res.retired > 0 ? `, retired ${res.retired}` : '') +
+                ` (${res.batchesScanned} batch(es) read, ${res.batchesSkipped} unchanged).`
+            )
+          }
+        } catch (err) {
+          logger.warn(`openclaw-amem: Scheduled contradiction sweep failed — ${(err as Error).message}`)
+        }
       }
       scheduleNextRun()
     }, delay)
