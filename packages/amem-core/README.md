@@ -1,12 +1,12 @@
-# @heichaowo/amem-core
+# @amemhq/core
 
 Framework-agnostic **A-MEM agentic memory engine** — memories that **evolve**, not just accumulate. Qdrant + local Transformers.js + LLM, **no Python required**.
 
 ```bash
-npm i @heichaowo/amem-core
+npm i @amemhq/core
 ```
 
-Extracted from [`openclaw-amem`](https://github.com/heichaowo/amem/tree/main/packages/openclaw-amem) so any host can share one memory engine: an OpenClaw plugin, a standalone service ([`amem-api`](../amem-api)), or a game agent. Part of the [amem monorepo](../../).
+Extracted from [`openclaw-amem`](https://github.com/amemhq/amem/tree/main/packages/openclaw-amem) so any host can share one memory engine: an OpenClaw plugin, a standalone service ([`amem-api`](../amem-api)), or a game agent. Part of the [amem monorepo](../../).
 
 > Based on _A-MEM: Agentic Memory for LLM Agents_ ([arXiv:2502.12110](https://arxiv.org/abs/2502.12110), NeurIPS 2025). For the original research implementation, see [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM).
 
@@ -85,7 +85,7 @@ Isolation is the default; sharing is an explicit exception (per arXiv:2604.16548
 ## Usage
 
 ```ts
-import { configure, addMemory, searchMemory, createStorageContext } from '@heichaowo/amem-core'
+import { configure, addMemory, searchMemory, createStorageContext } from '@amemhq/core'
 
 configure({ dataDir: '~/.myapp' }) // evo counter + consolidation logs (default ~/.amem, or AMEM_DATA_DIR)
 

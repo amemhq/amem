@@ -5,7 +5,7 @@
 This is a [pnpm](https://pnpm.io) monorepo (Node 24).
 
 ```bash
-git clone https://github.com/heichaowo/amem
+git clone https://github.com/amemhq/amem
 cd amem
 pnpm install        # first run: `pnpm approve-builds` for onnxruntime-node / sharp / esbuild
 pnpm -r build
@@ -22,7 +22,7 @@ pnpm -r test               # Vitest — integration tests need Qdrant :6333 + AN
 
 ## Test coverage
 
-Test suite is under reconstruction. See [GitHub Issues](https://github.com/heichaowo/amem/issues) for progress.
+Test suite is under reconstruction. See [GitHub Issues](https://github.com/amemhq/amem/issues) for progress.
 
 ## Project structure
 

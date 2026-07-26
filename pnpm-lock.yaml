@@ -41,7 +41,7 @@ importers:
 
   packages/amem-api:
     dependencies:
-      '@heichaowo/amem-core':
+      '@amemhq/core':
         specifier: workspace:*
         version: link:../amem-core
       '@modelcontextprotocol/sdk':

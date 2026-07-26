@@ -21,7 +21,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/introduction' },
       { text: 'OpenClaw Plugin', link: '/guide/installation' },
-      { text: `v${pkg.version}`, link: 'https://github.com/heichaowo/amem/releases' },
+      { text: `v${pkg.version}`, link: 'https://github.com/amemhq/amem/releases' },
     ],
 
     sidebar: [
@@ -61,7 +61,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/heichaowo/amem' },
+      { icon: 'github', link: 'https://github.com/amemhq/amem' },
     ],
 
     footer: {
@@ -70,7 +70,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/heichaowo/amem/edit/main/docs/:path',
+      pattern: 'https://github.com/amemhq/amem/edit/main/docs/:path',
       text: 'Edit this page on GitHub',
     },
 

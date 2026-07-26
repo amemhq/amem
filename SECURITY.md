@@ -7,7 +7,7 @@ Security fixes land on the latest release of each published package; there is no
 | Package                | Version        | Supported |
 | ---------------------- | -------------- | --------- |
 | `openclaw-amem`        | latest `1.1.x` | ✅        |
-| `@heichaowo/amem-core` | latest `0.2.x` | ✅        |
+| `@amemhq/core` | latest `0.2.x` | ✅        |
 | either                 | anything older | ❌        |
 
 The engine is also bundled inside `openclaw-amem`, so an engine fix ships in both — update the plugin as well as the package. `amem-api` is not released yet; report issues against it here all the same.
@@ -16,7 +16,7 @@ The engine is also bundled inside `openclaw-amem`, so an engine fix ships in bot
 
 Please report privately, **not** as a public issue or pull request.
 
-Use GitHub's private vulnerability reporting on this repository: **Security → Report a vulnerability** (<https://github.com/heichaowo/amem/security/advisories/new>). It opens a private channel with the maintainer; nothing is visible until an advisory is published.
+Use GitHub's private vulnerability reporting on this repository: **Security → Report a vulnerability** (<https://github.com/amemhq/amem/security/advisories/new>). It opens a private channel with the maintainer; nothing is visible until an advisory is published.
 
 Include what you found, how to reproduce it, and the impact you expect — a proof of concept helps. You will get an acknowledgement, and then either a fix or a reasoned explanation of why it is not one.
 

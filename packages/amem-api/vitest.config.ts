@@ -11,7 +11,7 @@ export default defineConfig({
       // pipeline runs against real Qdrant while downloading no model and making
       // no LLM call. The unit tests mock the engine wholesale, so for them the
       // alias never resolves to anything and this is a no-op.
-      '@heichaowo/amem-core': resolve(import.meta.dirname, '../amem-core/src/index.ts'),
+      '@amemhq/core': resolve(import.meta.dirname, '../amem-core/src/index.ts'),
     },
   },
 })

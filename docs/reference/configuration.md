@@ -304,7 +304,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |
 | `AMEM_PROMPT_LOCALE` | `en` | Prompt language for memory CRUD, merge, and evolution functions. Set to `zh` for Chinese prompts (better for Chinese-primary users). |
 
-> `AMEM_DATA_DIR` (the engine's on-disk location for the evolution counter and consolidation logs) is read by the engine but **fixed to `~/.openclaw` by the plugin**, so setting it has no effect when running as the OpenClaw plugin — it applies only when using [`@heichaowo/amem-core`](https://www.npmjs.com/package/@heichaowo/amem-core) directly.
+> `AMEM_DATA_DIR` (the engine's on-disk location for the evolution counter and consolidation logs) is read by the engine but **fixed to `~/.openclaw` by the plugin**, so setting it has no effect when running as the OpenClaw plugin — it applies only when using [`@amemhq/core`](https://www.npmjs.com/package/@amemhq/core) directly.
 
 ### Example: run smoke test with Gemini
 

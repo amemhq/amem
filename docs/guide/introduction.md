@@ -8,11 +8,11 @@ amem is a monorepo you can adopt one piece at a time:
 
 | Package | Role | Status |
 | --- | --- | --- |
-| [`@heichaowo/amem-core`](https://www.npmjs.com/package/@heichaowo/amem-core) | **Engine** — note construction, evolution, hybrid retrieval. Framework-agnostic. | shipping |
+| [`@amemhq/core`](https://www.npmjs.com/package/@amemhq/core) | **Engine** — note construction, evolution, hybrid retrieval. Framework-agnostic. | shipping |
 | [`openclaw-amem`](https://www.npmjs.com/package/openclaw-amem) | **OpenClaw Plugin** — drops A-MEM into OpenClaw's `memory` slot. | shipping |
 | `amem-api` | **Server** — single-writer HTTP + MCP service so many processes share one store. | coming soon |
 
-> **New here? Start with the [OpenClaw Plugin →](/guide/installation).** It's the fastest way to give an agent evolving long-term memory today — the [`amem-core`](https://github.com/heichaowo/amem) engine is bundled inside it, so there's nothing extra to install.
+> **New here? Start with the [OpenClaw Plugin →](/guide/installation).** It's the fastest way to give an agent evolving long-term memory today — the [`amem-core`](https://github.com/amemhq/amem) engine is bundled inside it, so there's nothing extra to install.
 
 ---
 

@@ -1,4 +1,4 @@
-# @heichaowo/amem-api
+# @amemhq/api
 
 **The single-writer memory service for the [amem](../../) stack** — HTTP + MCP.
 
@@ -36,8 +36,8 @@ Bodies take an optional `agentId` (default `main`); writes take an optional `sco
 Needs Qdrant on `localhost:6333`. Startup loads the embedding model **before** the port opens, so the first request is not the one that pays for the download — and so `/healthz` means something the moment it answers.
 
 ```bash
-pnpm --filter @heichaowo/amem-api build
-pnpm --filter @heichaowo/amem-api start
+pnpm --filter @amemhq/api build
+pnpm --filter @amemhq/api start
 ```
 
 | env | default | what |

@@ -1,7 +1,7 @@
 # openclaw-amem
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="amem logo" />
+  <img src="https://raw.githubusercontent.com/amemhq/amem/main/docs/public/logo.webp" width="120" alt="amem logo" />
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](../../LICENSE)
@@ -16,11 +16,11 @@ Runs on a small model — `gpt-4o-mini`, `haiku`, a local Ollama. No Python.
 
 中文走 [jieba](https://github.com/messense/node-jieba) 分词，提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`），embedding 模型本身多语言。
 
-Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@heichaowo/amem-core`](../amem-core).
+Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110); the engine itself is [`@amemhq/core`](../amem-core).
 
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
-⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).
+⭐ Useful? [Star it on GitHub](https://github.com/amemhq/amem).
 
 ## Highlights
 
