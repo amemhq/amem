@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@amemhq/core": "workspace:*",
+    "@amemhq/core": "workspace:^",
     "fastify": "^5.10.0",
     "zod": "^4.4.3"
   },
@@ -56,5 +56,8 @@
   "homepage": "https://amem.owo.lc",
   "bugs": {
     "url": "https://github.com/amemhq/amem/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
