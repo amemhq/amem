@@ -1,5 +1,12 @@
 # @heichaowo/amem-api
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`d94ca7f`](https://github.com/amemhq/amem/commit/d94ca7ff7c99bfe782192b56240fcee860218f73), [`e968fcd`](https://github.com/amemhq/amem/commit/e968fcd176f1f321455b69cd93abbc542ae7a7d8)]:
+  - @amemhq/core@1.0.0
+
 ## 0.1.4
 
 ### Patch Changes
