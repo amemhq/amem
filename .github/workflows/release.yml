@@ -22,10 +22,29 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # An unset RELEASE_PAT surfaces one step later as an opaque checkout auth
+      # failure, which reads like a GitHub outage rather than a missing secret.
+      # (An *expired* PAT is non-empty and still gets the opaque error — the
+      # message below is the first place to look either way.)
+      - name: Check RELEASE_PAT is set
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "${RELEASE_PAT:-}" ]; then
+            echo "::error::RELEASE_PAT is not set. Create a fine-grained PAT scoped to amemhq/amem with Contents: read+write and Pull requests: read+write, and store it as the RELEASE_PAT repository secret."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Same PAT as the changesets step below, for the same reason: this is
+          # the credential persisted into the git remote, so it is what pushes
+          # `changeset-release/main`. A push made with GITHUB_TOKEN raises no
+          # events, which would leave the release PR's `synchronize` runs dead
+          # even once the PR itself was created by a real user.
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
@@ -67,7 +86,15 @@ jobs:
           title: 'chore(release): version packages'
           commit: 'chore(release): version packages'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT, not GITHUB_TOKEN, for two reasons that both bite this repo:
+          # GITHUB_TOKEN cannot open a pull request at all under an org that has
+          # not enabled "Allow GitHub Actions to create and approve pull
+          # requests" (the transfer to amemhq reset that, and this step started
+          # failing with "GitHub Actions is not permitted to create or approve
+          # pull requests"); and even where it can, the PR it opens triggers no
+          # workflows, so the release PR's CI sits at action_required until
+          # somebody approves it by hand every single release.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # Fallback auth for when OIDC trusted publishing is unavailable. pnpm
           # prefers OIDC when it can (and only then is provenance attached), so
           # this token is used only if the OIDC exchange is skipped. It can be
