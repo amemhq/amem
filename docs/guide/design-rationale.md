@@ -162,6 +162,42 @@ logs to distinguish it from a genuine model failure.
 | Remove the CRUD step, as mem0 did | Their gain came from deleting a *broken* step. amem's runs only on the hard residual, where it has non-redundant value — the fix is to make it safe, not to remove it |
 | Default to a reasoning model | They underperform inside rigid pipelines ([arXiv:2606.01435](https://arxiv.org/abs/2606.01435)) and cost more |
 | Trust an LLM to pick an update target unchecked | See §3 |
+| Move embeddings from ONNX to GGUF | See below |
+
+### Why not GGUF
+
+Running embeddings through `@huggingface/transformers` means only models with an
+ONNX export are usable, and that constraint costs real quality — the strongest
+Chinese retrieval models either have no ONNX at all or publish fp32-only files too
+large to load. `node-llama-cpp` and the GGUF ecosystem would lift it. We looked
+properly and stayed put, for three reasons.
+
+**The model that motivated the switch does not work there.** GGUF's appeal was
+`Qwen3-Embedding-4B` — C-MTEB retrieval 77.03, and 2.5 GB at Q4_K_M against 16.1 GB
+for the fp32-only ONNX. But it fails past 512 tokens under `node-llama-cpp`
+(`Failed to get embeddings for token 512`,
+[QwenLM/Qwen3-Embedding#35](https://github.com/QwenLM/Qwen3-Embedding/issues/35)),
+unaffected by context or batch settings. amem is moving off a model *because* it
+truncates at 128 tokens. Trading that for one that breaks at 512 is not the fix.
+
+**The acceleration argument was based on something we never checked.** The case
+for GGUF leaned on Metal on Apple Silicon, against ONNX being CPU-only. ONNX is not
+CPU-only: `onnxruntime-node`'s macOS arm64 binary links `CoreML.framework` and
+exports `OrtSessionOptionsAppendExecutionProvider_CoreML`, and Transformers.js
+accepts `device: 'coreml'` and `device: 'webgpu'` on Node. It defaults to `cpu`,
+and amem never passed a device — so we were comparing a rival's best case against
+our own untouched default.
+
+**GGUF gives up controls that fail silently when lost.** `node-llama-cpp` exposes
+no pooling configuration; it reads pooling from the GGUF's metadata, which
+community conversions often omit. Getting that wrong produces vectors, not errors.
+It is also ESM-only and cannot be inlined, where the plugin ships as a single CJS
+bundle, and it replaces download-by-model-name with a user-supplied path to a
+multi-gigabyte file.
+
+Not settled, just decided for now. Revisit when #35 is fixed and an official GGUF
+with correct pooling metadata exists — and measure `coreml` and `webgpu` on the
+ONNX side first, because that is the cheaper experiment and it has never been run.
 
 ## Evidence quality
 

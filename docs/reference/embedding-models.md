@@ -239,8 +239,14 @@ NDCG@10, one leaderboard snapshot each — so they are comparable *within* a col
 ᶜ C-MTEB score from an earlier snapshot; not from the two model cards above.
 
 Read the last column as a watchlist. **"A quantized export"** covers most of it,
-and that is exactly what the GGUF ecosystem already has for several of these —
-which is why the runtime choice, not this table, is the thing to revisit.
+and the GGUF ecosystem already has that for several of these — so the obvious
+question is why amem does not just load GGUF instead.
+
+We looked, and stayed on ONNX. The short version: `Qwen3-Embedding-4B`, the model
+that made the case, [fails past 512 tokens](https://github.com/QwenLM/Qwen3-Embedding/issues/35)
+under `node-llama-cpp`, and amem is leaving its current model precisely because it
+truncates at 128. The longer version, including what the comparison got wrong the
+first time, is in [Design Rationale](/guide/design-rationale#why-not-gguf).
 
 ::: tip The old IR-9 ceiling no longer applies
 Earlier versions of this page ruled models out for exporting at ONNX IR version 10.
