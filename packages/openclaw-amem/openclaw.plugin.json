@@ -1,7 +1,7 @@
 {
   "id": "openclaw-amem",
   "name": "amem — agentic memory",
-  "description": "Memories that evolve, not just accumulate. Notes link into a graph, contradictions are caught by a nightly sweep, and memories stay separated per agent and per person. Hybrid retrieval over Qdrant — runs fine on a cheap or local model. 中文一等公民：jieba 分词让 BM25 真正可用、中文提示词、多语言向量模型。",
+  "description": "Memories that evolve, not just accumulate. Notes link into a graph, contradictions are caught by a nightly sweep, and memories stay separated per agent and per person. Hybrid retrieval over Qdrant — runs fine on a cheap or local model. 中文做了专门处理：jieba 分词（否则 BM25 对中文几乎无效）、中文提示词、多语言向量模型。",
   "version": "1.3.0",
   "kind": "memory",
   "openclaw": {

@@ -12,7 +12,7 @@
 
 Notes link themselves into a graph and are retrieved by a hybrid of BM25 and dense search with 2-hop graph expansion. Memories stay separated **per agent** and **per person**, so one character can remember several people without mixing them up. A nightly sweep catches memories that have started contradicting each other. Backed by Qdrant + local Transformers.js — and it runs fine on a cheap or local model. **No Python required.**
 
-**中文是一等公民**，不是顺带支持：BM25 检索走 [jieba](https://github.com/messense/node-jieba) 分词（中文没有空格，不分词的话关键词检索基本失效），提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`），向量模型本身是多语言的。
+**中文处理**：BM25 检索走 [jieba](https://github.com/messense/node-jieba) 分词——中文没有空格，不分词的话关键词检索几乎无效；提示词有完整中文版（`AMEM_PROMPT_LOCALE=zh`）；向量模型本身是多语言的。
 
 Implements [A-MEM](https://arxiv.org/abs/2502.12110) (arXiv 2502.12110).
 
