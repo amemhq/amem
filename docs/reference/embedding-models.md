@@ -246,13 +246,50 @@ holding its weights resident in the same process as your agent.
   been measured on this runtime. Compare parameter counts instead: the current
   default is 118M, so `bge-m3` at 568M is roughly five times the work per encode
   and `Qwen3-Embedding-4B` is roughly thirty-four times.
-- Inference runs on **CPU today** — but by configuration, not by limitation.
-  Transformers.js lists `coreml` (macOS), `dml` (Windows), `cuda` (Linux x64) and
-  `webgpu` as supported devices on Node, and defaults to `cpu`. amem does not pass
-  a `device`, so it takes that default. Whether any accelerator is actually faster
-  here is **unmeasured**: CoreML partitions a graph op by op and can be slower than
-  CPU for some models, so this is a thing to measure before enabling, not a free
-  win to assume.
+- Inference runs on **CPU by default** — by configuration, not by limitation. See
+  [Device](#device).
+
+## Precision
+
+`AMEM_EMBED_DTYPE` picks which weights are downloaded and used. Transformers.js
+defaults to **`fp32`** on Node, which is the largest file a model publishes — for
+`bge-m3` that is 2.16 GB where `fp16` is 1.08 GB and `int8` is 542 MB.
+
+```bash
+AMEM_EMBED_DTYPE=fp16
+```
+
+Valid values are whatever the model publishes: `fp32`, `fp16`, `q8`, `int8`,
+`uint8`, `q4`, `q4f16`, `bnb4`. An unknown one fails at load and names the valid
+options, so a typo does not run silently.
+
+**Changing this needs no migration.** Quantization does not change the vector
+width, so the collection is unaffected. It does perturb the values slightly, which
+means a store written at `fp32` and later queried at `int8` is marginally
+inconsistent — quantization error is small next to semantic distance, but that is
+reasoning rather than a measurement.
+
+Note that a smaller file does not always mean less memory: on x86 there is no
+native fp16 arithmetic, so ONNX Runtime inserts casts back to fp32 at inference.
+The download shrinks; the compute may not.
+
+## Device
+
+`AMEM_EMBED_DEVICE` picks where inference runs. Transformers.js accepts `cpu`,
+`coreml` (macOS), `dml` (Windows), `cuda` (Linux x64) and `webgpu` on Node, and
+defaults to `cpu`.
+
+amem has never passed a device, which is the only reason it has always run on CPU.
+`onnxruntime-node`'s macOS arm64 binary links `CoreML.framework` and exports the
+CoreML provider — the capability was there the whole time.
+
+::: warning Unmeasured
+Nobody has benchmarked this on amem's models, so there is no recommendation here.
+CoreML partitions a graph operator by operator and falls back to CPU for the ones
+it cannot take, so it can lose to plain CPU on some models, and it pays a
+compilation cost on first load. Treat it as an experiment to run, not a setting to
+turn on.
+:::
 
 ## Not usable today
 

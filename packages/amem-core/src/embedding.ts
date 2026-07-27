@@ -12,7 +12,7 @@
 // Dynamic import to avoid issues with CJS bundling
 let pipeline: any = null
 let extractor: any = null
-let loadedModelName: string | null = null
+let loadedKey: string | null = null
 let cachedDim: number | null = null
 
 /** The model shipped since the beginning. Not changed here on purpose. */
@@ -71,20 +71,61 @@ export function getEmbeddingPooling(): PoolingMode {
   return CLS_POOLED_MODELS.has(basename) ? 'cls' : 'mean'
 }
 
+/**
+ * Where inference runs. Unset means Transformers.js picks, which on Node is `cpu`.
+ *
+ * It is not CPU-only for lack of anything else: `onnxruntime-node`'s macOS arm64
+ * binary links CoreML.framework and exports the CoreML provider, and
+ * Transformers.js lists `coreml` (macOS), `dml` (Windows), `cuda` (Linux x64) and
+ * `webgpu` alongside `cpu`. It simply defaults to `cpu` and amem never asked for
+ * anything else.
+ *
+ * Whether asking helps is **unmeasured**. CoreML partitions a graph operator by
+ * operator and falls back to CPU for the ones it cannot take, so it can lose to
+ * plain CPU on some models and pay a compile cost on first load. Hence: opt-in,
+ * default unchanged, and no recommendation until someone benchmarks it.
+ */
+export function getEmbeddingDevice(): string | undefined {
+  return process.env.AMEM_EMBED_DEVICE?.trim() || undefined
+}
+
+/**
+ * Weight precision. Unset means Transformers.js picks, which on Node is `fp32` —
+ * the largest download of every variant a model publishes.
+ *
+ * Passed through rather than validated against a list: Transformers.js already
+ * rejects an unknown value and names the valid ones, and a list here would go
+ * stale the moment it gains a quantization.
+ */
+export function getEmbeddingDtype(): string | undefined {
+  return process.env.AMEM_EMBED_DTYPE?.trim() || undefined
+}
+
+/** Everything that decides which weights are resident. */
+function extractorKey(): string {
+  return `${getEmbeddingModel()}|${getEmbeddingDevice() ?? ''}|${getEmbeddingDtype() ?? ''}`
+}
+
 async function getExtractor() {
-  const wanted = getEmbeddingModel()
-  // Re-resolving on every call keeps the env var honest in tests and lets a
+  const wanted = extractorKey()
+  // Re-resolving on every call keeps the env vars honest in tests and lets a
   // long-lived process pick up a change without a restart; the cached vector
   // dimension belongs to the OLD model, so drop it with the extractor.
-  if (extractor && loadedModelName === wanted) return extractor
+  if (extractor && loadedKey === wanted) return extractor
   if (!pipeline) {
     const mod = await import('@huggingface/transformers')
     pipeline = mod.pipeline
   }
-  extractor = await pipeline('feature-extraction', wanted, {
+  const device = getEmbeddingDevice()
+  const dtype = getEmbeddingDtype()
+  extractor = await pipeline('feature-extraction', getEmbeddingModel(), {
     revision: 'main',
+    // Omitted entirely when unset, so an unconfigured install gets exactly the
+    // library defaults it got before these existed.
+    ...(device ? { device } : {}),
+    ...(dtype ? { dtype } : {}),
   })
-  loadedModelName = wanted
+  loadedKey = wanted
   cachedDim = null
   return extractor
 }
@@ -98,7 +139,7 @@ async function getExtractor() {
  * forward pass on a model that has to load anyway, and is right for any model.
  */
 export async function getEmbeddingDim(): Promise<number> {
-  if (cachedDim !== null && loadedModelName === getEmbeddingModel()) return cachedDim
+  if (cachedDim !== null && loadedKey === extractorKey()) return cachedDim
   const probe = await encode('dimension probe')
   cachedDim = probe.length
   return cachedDim
@@ -140,7 +181,8 @@ function poolNormalize(output: number[][], attentionMask: number[], mode: Poolin
 }
 
 /**
- * Encode text to 384-dim normalized embedding vector.
+ * Encode text to a normalized embedding vector. The width is the model's — 384
+ * for the default, 1024 for bge-m3 — so nothing here should assume a number.
  * Singleton model, loaded once and reused.
  */
 export async function encode(text: string): Promise<number[]> {
