@@ -153,15 +153,33 @@ export class EmbeddingDimensionMismatchError extends Error {
         `collection's vector size at creation and cannot change it, so writes and ` +
         `searches would both fail.\n` +
         `Either set AMEM_EMBED_MODEL back to the model this collection was built ` +
-        `with, or migrate to a new collection:\n\n` +
-        `  AMEM_EMBED_MODEL=${model} \\\n` +
-        `    npx --package=@amemhq/core amem-migrate --to ${collection}_v2\n\n` +
-        `That is a dry run. Add --apply to write. "${collection}" is only read, so ` +
-        `nothing is lost either way — point AMEM_COLLECTION at the new one when it ` +
-        `looks right. See https://amem.owo.lc/reference/embedding-models.`
+        `with, or ${migrationHint(collection, model)}`
     )
     this.name = 'EmbeddingDimensionMismatchError'
   }
+}
+
+/**
+ * The tail both mismatch errors share: how to rebuild, and how to switch over.
+ *
+ * "Set AMEM_COLLECTION" alone is only right for the default collection. A mode B
+ * collection is named by the plugin's `collection` setting (or an
+ * `agents.<id>.collection` override) and handed straight to
+ * `createStorageContext`, which never consults the env var for it — so a mode B
+ * operator following that instruction would repoint the *default* store at
+ * someone else's migrated collection and still be looking at the original error.
+ */
+function migrationHint(collection: string, targetModel: string): string {
+  return (
+    `migrate to a new collection:\n\n` +
+    `  AMEM_EMBED_MODEL=${targetModel} \\\n` +
+    `    npx --package=@amemhq/core amem-migrate --to ${collection}_v2\n\n` +
+    `That is a dry run; add --apply to write. "${collection}" is only read, so ` +
+    `nothing is lost either way. When it looks right, point whatever names this ` +
+    `collection at the new one — AMEM_COLLECTION, or the plugin's "collection" ` +
+    `setting if this agent has its own. ` +
+    `See https://amem.owo.lc/reference/embedding-models.`
+  )
 }
 
 /**
@@ -182,9 +200,8 @@ export class EmbeddingModelMismatchError extends Error {
         `"${configuredModel}". Both produce vectors of the same width, so nothing ` +
         `would fail — searches would just quietly compare vectors from two ` +
         `different models.\n` +
-        `Either set AMEM_EMBED_MODEL back to "${collectionModel}", or migrate to a ` +
-        `new collection built with "${configuredModel}". ` +
-        `See docs/reference/embedding-models.md.`
+        `Either set AMEM_EMBED_MODEL back to "${collectionModel}", or ` +
+        migrationHint(collection, configuredModel)
     )
     this.name = 'EmbeddingModelMismatchError'
   }
