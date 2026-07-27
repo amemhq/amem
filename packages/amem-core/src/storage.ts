@@ -159,6 +159,59 @@ export class EmbeddingDimensionMismatchError extends Error {
   }
 }
 
+/**
+ * Which embedding model built a collection, and what the process wants to use.
+ *
+ * Vector width is the only thing Qdrant can check for us, and two models of the
+ * same width are indistinguishable to it. This is the case that check misses.
+ */
+export class EmbeddingModelMismatchError extends Error {
+  constructor(
+    readonly collection: string,
+    readonly collectionModel: string,
+    readonly configuredModel: string
+  ) {
+    super(
+      `Collection "${collection}" was built with the embedding model ` +
+        `"${collectionModel}", but this process is configured for ` +
+        `"${configuredModel}". Both produce vectors of the same width, so nothing ` +
+        `would fail — searches would just quietly compare vectors from two ` +
+        `different models.\n` +
+        `Either set AMEM_EMBED_MODEL back to "${collectionModel}", or migrate to a ` +
+        `new collection built with "${configuredModel}". ` +
+        `See docs/reference/embedding-models.md.`
+    )
+    this.name = 'EmbeddingModelMismatchError'
+  }
+}
+
+/** What `GET /collections/{name}` gives us that we act on. */
+type CollectionInfo = {
+  config?: {
+    params?: { vectors?: { size?: number } }
+    /** Qdrant >= 1.16. Absent on older servers and on collections predating it. */
+    metadata?: { embedding_model?: string }
+  }
+}
+
+/**
+ * Record which model built a collection, best-effort.
+ *
+ * Deliberately not part of the create call: an older Qdrant rejects a request
+ * body it does not recognise, and failing to note the model must never be the
+ * reason a collection cannot be created. Collection metadata landed in Qdrant
+ * 1.16 (PR #7123); against anything older this is a no-op and the engine behaves
+ * exactly as it did before.
+ */
+async function recordCollectionModel(collection: string, model: string): Promise<void> {
+  try {
+    await qdrant('PATCH', `/collections/${collection}`, { metadata: { embedding_model: model } })
+  } catch {
+    // Older Qdrant, or a permissions setup that forbids PATCH. Falling back to
+    // the dimension check alone is exactly the previous behaviour.
+  }
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 async function qdrant(method: string, path: string, body?: unknown): Promise<unknown> {
   const res = await fetch(`${QDRANT_URL}${path}`, {
@@ -213,7 +266,6 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
     if (collectionName) _collectionReadyMap.set(col, true)
     else _collectionReady = true
   }
-  type CollectionInfo = { config?: { params?: { vectors?: { size?: number } } } }
   let existing: CollectionInfo | null = null
   try {
     existing = (await qdrant('GET', `/collections/${col}`)) as CollectionInfo
@@ -233,6 +285,23 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
         throw new EmbeddingDimensionMismatchError(col, collectionDim, modelDim, getEmbeddingModel())
       }
     }
+
+    const recorded = existing.config?.metadata?.embedding_model
+    const current = getEmbeddingModel()
+    if (typeof recorded === 'string' && recorded !== current) {
+      // Same width, different model. The dimension check above cannot see this,
+      // and nothing downstream would: both models produce well-formed vectors of
+      // the right size, so the store silently ends up holding two incompatible
+      // geometries and retrieval quietly degrades.
+      throw new EmbeddingModelMismatchError(col, recorded, current)
+    }
+    if (recorded === undefined) {
+      // Predates this field. The dimension matched, so whatever is configured now
+      // is what has been writing these vectors — record it while that is still
+      // provable. Once the default model changes, it no longer is.
+      await recordCollectionModel(col, current)
+    }
+
     markReady()
     return
   }
@@ -248,6 +317,7 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
     // If another concurrent call already created it, that's fine
     if (!(err instanceof Error) || !err.message.includes('already exists')) throw err
   }
+  await recordCollectionModel(col, getEmbeddingModel())
   // Index agent_id for fast filtering
   await qdrant('PUT', `/collections/${col}/index`, {
     field_name: 'agent_id',
@@ -320,6 +390,10 @@ export async function collectionDimRaw(collection: string): Promise<number | nul
 /** Create a collection at an explicit width, with the same payload indexes as ensureCollection. */
 export async function createCollectionRaw(collection: string, size: number): Promise<void> {
   await qdrant('PUT', `/collections/${collection}`, { vectors: { size, distance: 'Cosine' } })
+  // The migration target is built by the model configured right now — the same
+  // one that produced `size`. Record it so the new collection self-describes from
+  // the moment it exists, rather than on whatever later run first opens it.
+  await recordCollectionModel(collection, getEmbeddingModel())
   for (const field_name of ['agent_id', 'hash', 'topics', 'subjects']) {
     await qdrant('PUT', `/collections/${collection}/index`, { field_name, field_schema: 'keyword' })
   }

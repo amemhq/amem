@@ -27,6 +27,13 @@ Qdrant fixes a collection's vector size when the collection is created and canno
 change it afterwards. Point `AMEM_EMBED_MODEL` at a model of a different width and
 startup fails with `EmbeddingDimensionMismatchError`; memory stays unusable until
 you migrate or change it back. Pick before you have data, or migrate deliberately.
+
+A model of the **same** width is caught too, by a different mechanism: amem records
+which model built a collection in Qdrant's collection metadata, and refuses to open
+it with a different one (`EmbeddingModelMismatchError`). Without that, swapping
+between two 1024-dimension models would pass every check and silently leave the
+store holding vectors from two different geometries. Needs Qdrant 1.16 or newer;
+on older servers only the width check applies.
 :::
 
 ## Reading the tables
