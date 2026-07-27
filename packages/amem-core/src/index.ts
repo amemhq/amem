@@ -66,6 +66,8 @@ export {
   getEmbeddingModel,
   getEmbeddingDim,
   getEmbeddingPooling,
+  getEmbeddingDevice,
+  getEmbeddingDtype,
   DEFAULT_EMBEDDING_MODEL,
   type PoolingMode,
 } from './embedding.js'
