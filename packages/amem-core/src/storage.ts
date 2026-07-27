@@ -133,7 +133,8 @@ export interface QueryResult {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const QDRANT_URL = 'http://localhost:6333'
-const getCollection = () => process.env.AMEM_COLLECTION || 'amem_notes'
+/** The collection this process reads and writes unless told otherwise. */
+export const getCollection = () => process.env.AMEM_COLLECTION || 'amem_notes'
 /**
  * Raised when the configured model's vector width does not match the collection
  * that already exists. Its own class so the plugin can log it loudly instead of
@@ -152,8 +153,12 @@ export class EmbeddingDimensionMismatchError extends Error {
         `collection's vector size at creation and cannot change it, so writes and ` +
         `searches would both fail.\n` +
         `Either set AMEM_EMBED_MODEL back to the model this collection was built ` +
-        `with, or migrate: build a new collection with the new model, backfill it, ` +
-        `then point AMEM_COLLECTION at it. See docs/reference/embedding-models.md.`
+        `with, or migrate to a new collection:\n\n` +
+        `  AMEM_EMBED_MODEL=${model} \\\n` +
+        `    npx --package=@amemhq/core amem-migrate --to ${collection}_v2\n\n` +
+        `That is a dry run. Add --apply to write. "${collection}" is only read, so ` +
+        `nothing is lost either way — point AMEM_COLLECTION at the new one when it ` +
+        `looks right. See https://amem.owo.lc/reference/embedding-models.`
     )
     this.name = 'EmbeddingDimensionMismatchError'
   }
