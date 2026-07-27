@@ -1,5 +1,121 @@
 # @amemhq/core
 
+## 1.1.0
+
+### Minor Changes
+
+- [#97](https://github.com/amemhq/amem/pull/97) [`328b97e`](https://github.com/amemhq/amem/commit/328b97e5de4dffe3a3bc802f0d4b319fc71203c8) Thanks [@heichaowo](https://github.com/heichaowo)! - Record which embedding model built a collection, in Qdrant's collection metadata.
+
+  Groundwork for changing the default embedding model without breaking existing
+  installs. Today the engine only knows a collection's vector width; when the
+  default changes, an existing 384-dimension collection would meet a 1024-dimension
+  model and fail at startup. Knowing which model built it means the engine can keep
+  using that one until the user migrates.
+
+  Qdrant gained user-writable collection metadata in 1.16 (PR [#7123](https://github.com/amemhq/amem/issues/7123)), so this needs
+  no sentinel point, no sidecar file and no collection-name convention — and no read
+  path changes. `ensureCollection` already fetches the collection info it reads this
+  from, so there is no extra round trip.
+
+  Collections that predate the field are backfilled the first time they are opened:
+  the width matched, so whatever is configured at that moment is provably what wrote
+  those vectors. That stops being true once the default changes, which is why this
+  lands first.
+
+  Also catches a case nothing caught before: two different models of the _same_
+  width. `EmbeddingModelMismatchError` is thrown rather than letting the store
+  accumulate vectors from two geometries, which fails no check and simply retrieves
+  worse.
+
+  Writing the metadata is best-effort and deliberately separate from collection
+  creation — an older Qdrant rejecting an unfamiliar field must never be the reason
+  a collection cannot be created. Against Qdrant older than 1.16 this is a no-op and
+  behaviour is unchanged.
+
+- [#100](https://github.com/amemhq/amem/pull/100) [`9baba77`](https://github.com/amemhq/amem/commit/9baba77bbac7d714209ecfebf8d45a672b875543) Thanks [@heichaowo](https://github.com/heichaowo)! - Add `AMEM_EMBED_DTYPE` and `AMEM_EMBED_DEVICE`.
+
+  Both are pass-through to Transformers.js and both default to unset, so an
+  unconfigured install keeps exactly the behaviour it had.
+
+  `AMEM_EMBED_DTYPE` decides which weights are downloaded. The library default on
+  Node is `fp32`, which is the largest file a model publishes — `bge-m3` is 2.16 GB
+  at fp32 against 1.08 GB at fp16. Changing it needs no migration, because
+  quantization does not change the vector width.
+
+  `AMEM_EMBED_DEVICE` decides where inference runs. amem has always run on CPU, and
+  it turns out that was only because nothing ever passed a device:
+  `onnxruntime-node`'s macOS arm64 binary links CoreML.framework and exports the
+  CoreML provider, and Transformers.js accepts `coreml`, `dml`, `cuda` and `webgpu`
+  on Node. Whether any of them is actually faster here is **unmeasured** — CoreML
+  partitions a graph operator by operator and can lose to CPU — so this ships as an
+  experiment to run, with no recommendation and no change of default.
+
+  The extractor cache key now covers model, device and dtype together. It keyed on
+  the model alone, so changing either of the new settings would have been ignored
+  until the process restarted.
+
+- [#99](https://github.com/amemhq/amem/pull/99) [`5bafe8a`](https://github.com/amemhq/amem/commit/5bafe8aa14d083a1700a8842363f3c62a3e26d07) Thanks [@heichaowo](https://github.com/heichaowo)! - Add `amem-migrate`, so the dimension-mismatch error can end in a command.
+
+  When the embedding model changes width, startup fails and the message has to tell
+  the operator what to do about it. It used to describe the procedure in prose —
+  build a collection, backfill it, repoint `AMEM_COLLECTION` — which is not runnable
+  at the moment memory has stopped working. It now prints:
+
+  ```
+  AMEM_EMBED_MODEL=<model> \
+    npx --package=@amemhq/core amem-migrate --to <collection>_v2
+  ```
+
+  with the real model and collection names filled in. Dry run by default; `--apply`
+  writes. The source collection is only read, so the operation stays reversible.
+
+  `migrateCollection()` is unchanged and still exported. A library should not
+  re-embed someone's entire store because it was imported, so the decision to run
+  lives in a command rather than in engine startup — this only adds the entry point,
+  not a policy.
+
+### Patch Changes
+
+- [#101](https://github.com/amemhq/amem/pull/101) [`2efaaef`](https://github.com/amemhq/amem/commit/2efaaef56c655499132cc98ff0d8acef390cdae0) Thanks [@heichaowo](https://github.com/heichaowo)! - Exercise the embedding-model migration against a real Qdrant.
+
+  `migrateCollection` had unit coverage only, with every Qdrant call mocked. That
+  proved the branching and nothing else — and this is the command 2.0.0 will tell
+  people to run across the entire contents of their memory store, so "the mocks
+  agree with my assumptions" is not the bar.
+
+  Eight tests now push real points through a real server: the rebuild lands at the
+  target width with content intact, the source comes back byte-identical (the
+  property the whole approach rests on), a dry run leaves no collection behind, a
+  non-empty target and a missing source are both refused, `refreshFields` re-extracts
+  only the notes that never had keywords and makes no LLM call when off, and the
+  target records the model that built it.
+
+  No production code changed.
+
+- [#102](https://github.com/amemhq/amem/pull/102) [`ad06fb8`](https://github.com/amemhq/amem/commit/ad06fb8151f08bec4e150cfb53d798dc9eb1230e) Thanks [@heichaowo](https://github.com/heichaowo)! - Fix what a pre-release review of the final v1 turned up.
+
+  `EmbeddingDimensionMismatchError` told everyone to "point AMEM_COLLECTION at the
+  new one". That is right for the default collection and wrong for a mode B one,
+  whose name comes from the plugin's `collection` setting and is handed straight to
+  `createStorageContext` — the env var is never consulted for it. A mode B operator
+  following that instruction would repoint the _default_ store at their migrated
+  collection and still be staring at the original error.
+
+  `EmbeddingModelMismatchError` gave prose where its sibling gives a runnable
+  command, and pointed at `docs/reference/embedding-models.md`, a repo path that is
+  not in the published package. Both errors now share one tail, so they cannot drift
+  apart again.
+
+  The plugin checked only `EmbeddingDimensionMismatchError`, so the model mismatch —
+  added in this same release — fell through to `logger.warn` and never reached the
+  "memory is UNUSABLE" path. It does not stop writes, but it silently mixes two
+  vector geometries, which is worse to find out about late than a hard failure.
+
+  Docs: the collection-schema section named the wrong default model
+  (`multilingual-e5-small` rather than `paraphrase-multilingual-MiniLM-L12-v2`),
+  which could have led someone to set `AMEM_EMBED_MODEL` to a model their store was
+  never built with. The dtype list was missing `uint8` and `bnb4`.
+
 ## 1.0.1
 
 ### Patch Changes
