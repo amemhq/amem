@@ -76,8 +76,8 @@ importers:
   packages/amem-core:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: ^0.112.1
-        version: 0.112.1(zod@4.4.3)
+        specifier: ^0.112.5
+        version: 0.112.5(zod@4.4.3)
       '@huggingface/transformers':
         specifier: ^4.2.0
         version: 4.2.0(@types/node@26.1.1)
@@ -129,8 +129,8 @@ importers:
   packages/openclaw-amem:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: ^0.112.1
-        version: 0.112.1(zod@4.4.3)
+        specifier: ^0.112.5
+        version: 0.112.5(zod@4.4.3)
       '@huggingface/transformers':
         specifier: ^4.2.0
         version: 4.2.0(@types/node@26.1.1)
@@ -187,8 +187,8 @@ importers:
 
 packages:
 
-  '@anthropic-ai/sdk@0.112.1':
-    resolution: {integrity: sha512-vPRhHWxG9gIDyI9anVET2tBkmMBOXyTpIFvQgUVveiAV0ihmQgBYzQHb/s9+pZ/FxprSWcQnj15YnRfPxOIEmg==}
+  '@anthropic-ai/sdk@0.112.5':
+    resolution: {integrity: sha512-FaaGkyS4/zW4n+8Pr9jQkyo5zWcBNw+R+heCLXdoKDUEuALbPALBk6zLAlmsU+veREiaATxVG0TwkK/cQ3NZsQ==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -3306,7 +3306,7 @@ packages:
 
 snapshots:
 
-  '@anthropic-ai/sdk@0.112.1(zod@4.4.3)':
+  '@anthropic-ai/sdk@0.112.5(zod@4.4.3)':
     dependencies:
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.0.0
