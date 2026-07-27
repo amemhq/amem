@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.4.2
+
+### Patch Changes
+
+- [#96](https://github.com/amemhq/amem/pull/96) [`31b6fff`](https://github.com/amemhq/amem/commit/31b6fff762aef85f8990626a7cb7d0f03833ead6) Thanks [@heichaowo](https://github.com/heichaowo)! - Bump `@anthropic-ai/sdk` to 0.112.5.
+
+  Routine: docs updates, a Bedrock `withOptions()` fix that does not apply here, and
+  a new refusal category in the API types. Recorded because the plugin bundles the
+  SDK, so the bump does reach users even though nothing about amem behaves
+  differently.
+
+- [#95](https://github.com/amemhq/amem/pull/95) [`7578c7a`](https://github.com/amemhq/amem/commit/7578c7ae65f23b22b3c6d2bf07c230fcb204a9a2) Thanks [@heichaowo](https://github.com/heichaowo)! - Pool embeddings the way the model expects, instead of always mean-pooling.
+
+  `encode()` hardcoded `pooling: 'mean'`. That is correct for the default model and
+  wrong for every BGE-, GTE- and Arctic-family model, which are trained for `cls` —
+  so anyone who pointed `AMEM_EMBED_MODEL` at one of the models this project's own
+  docs recommend was getting a degraded vector.
+
+  It degrades rather than breaks, which is why it went unnoticed: both modes return
+  a normalized vector of the right width, and search keeps working because notes and
+  queries pass through the same function. It simply retrieves worse than the model
+  can, with nothing to indicate it.
+
+  The mode is now resolved from the model name, overridable with
+  `AMEM_EMBED_POOLING`. A model that is not recognised falls back to `mean` — the
+  behaviour of every previous release — so this can only improve an existing setup,
+  never change one that was already right.
+
+  Unlike the vector dimension, which amem measures with a probe encode, pooling
+  cannot be detected at runtime: both modes look equally valid from the outside. So
+  this is a lookup table, and each of its entries was read from that model's own
+  `1_Pooling/config.json`.
+
 ## 1.4.1
 
 ### Patch Changes
