@@ -36,6 +36,29 @@ store holding vectors from two different geometries. Needs Qdrant 1.16 or newer;
 on older servers only the width check applies.
 :::
 
+## Changing the model on a store you already have
+
+Rebuild into a new collection. The source is only ever read, so the whole thing is
+reversible until you decide otherwise.
+
+```bash
+AMEM_EMBED_MODEL=Xenova/bge-m3 \
+  npx --package=@amemhq/core amem-migrate --to amem_notes_v2
+```
+
+That reports what it would do and writes nothing. Add `--apply` when the numbers
+look right, then point `AMEM_COLLECTION` at `amem_notes_v2`. The old collection is
+still there if you change your mind.
+
+Re-embedding costs no LLM calls — content, keywords, tags and context all already
+sit in the payload, so it is local compute. The exception is notes written before
+the extraction pipeline filled those fields in: those get re-extracted, which does
+call the LLM. `--no-refresh-fields` skips it and makes the migration completely
+offline, at the cost of leaving those notes embedding from less text than they
+would today.
+
+`amem-migrate --help` lists the rest.
+
 ## Reading the tables
 
 - **zh** is C-MTEB / MTEB(cmn) **retrieval** NDCG@10. **en** is MTEB(eng)

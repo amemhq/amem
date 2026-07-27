@@ -23,6 +23,9 @@
       }
     }
   },
+  "bin": {
+    "amem-migrate": "./dist/cli-migrate.js"
+  },
   "files": [
     "dist/",
     "README.md",
