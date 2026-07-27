@@ -39,6 +39,7 @@
           "AMEM_LLM_TIMEOUT",
           "AMEM_CRUD_UPDATE_MIN_SIM",
           "AMEM_EMBED_MODEL",
+          "AMEM_EMBED_POOLING",
           "AMEM_COLLECTION",
           "AMEM_DATA_DIR",
           "AMEM_EVO_COUNTER_PATH",

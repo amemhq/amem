@@ -299,6 +299,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |
 | `AMEM_CRUD_UPDATE_MIN_SIM` | `0.35` | Similarity floor (0–1) for accepting an LLM-chosen CRUD `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `AMEM_EMBED_MODEL` | `Xenova/paraphrase-multilingual-MiniLM-L12-v2` | Which model embeds memories. Changing it is a **breaking change** whenever the vector width differs — see [Embedding models](/reference/embedding-models). |
+| `AMEM_EMBED_POOLING` | resolved from the model, else `mean` | How token embeddings collapse into one vector: `mean` or `cls`. BGE-, GTE- and Arctic-family models want `cls`; E5, Conan and the `all-*` models want `mean`. Only set this if you are using a model amem does not recognise — see [Pooling](/reference/embedding-models#pooling). |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |
