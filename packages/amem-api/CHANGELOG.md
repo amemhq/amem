@@ -1,5 +1,23 @@
 # @heichaowo/amem-api
 
+## 0.1.6
+
+### Patch Changes
+
+- [#91](https://github.com/amemhq/amem/pull/91) [`3b505c4`](https://github.com/amemhq/amem/commit/3b505c4bca0a87b5700c9cb54f3241782255494d) Thanks [@heichaowo](https://github.com/heichaowo)! - Loosen the engine dependency ahead of any publish.
+
+  `workspace:*` publishes as an exact version, not a range — packing the package
+  produced `"@amemhq/core": "1.0.0"`. That would pin consumers to a single engine
+  version and make every core patch require an api release before anyone could
+  get it. `workspace:^` packs as `^1.0.0`.
+
+  Also declares `publishConfig.access: public`, matching `@amemhq/core`. The
+  changesets config already passes `--access public`, so this only covers a
+  direct `npm publish`.
+
+- Updated dependencies [[`31b6fff`](https://github.com/amemhq/amem/commit/31b6fff762aef85f8990626a7cb7d0f03833ead6), [`7578c7a`](https://github.com/amemhq/amem/commit/7578c7ae65f23b22b3c6d2bf07c230fcb204a9a2)]:
+  - @amemhq/core@1.0.1
+
 ## 0.1.5
 
 ### Patch Changes
