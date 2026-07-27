@@ -62,7 +62,13 @@ export { canWrite, canRead } from './auth.js'
 // The model is selectable, and its vector width is measured rather than assumed.
 // Changing it is breaking whenever the width differs, so migrateCollection does
 // build-alongside → backfill → verify and never writes to the source.
-export { getEmbeddingModel, getEmbeddingDim, DEFAULT_EMBEDDING_MODEL } from './embedding.js'
+export {
+  getEmbeddingModel,
+  getEmbeddingDim,
+  getEmbeddingPooling,
+  DEFAULT_EMBEDDING_MODEL,
+  type PoolingMode,
+} from './embedding.js'
 export { EmbeddingDimensionMismatchError } from './storage.js'
 export { migrateCollection, type MigrateResult } from './migrate.js'
 

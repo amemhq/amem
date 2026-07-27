@@ -164,6 +164,34 @@ they are **GGUF for llama.cpp**, which Transformers.js cannot load. If a quantiz
 ONNX export appears, these become the strongest Chinese models available here.
 :::
 
+## Pooling
+
+A model produces one vector per token. Collapsing those into one sentence vector
+is either **`mean`** (average across tokens) or **`cls`** (take the first token),
+and a model only works properly with the one it was trained for.
+
+amem resolves this from the model name and falls back to `mean`. Override with
+`AMEM_EMBED_POOLING` if you use a model not listed here.
+
+| Wants `cls` | Wants `mean` |
+| :--- | :--- |
+| every `bge-*`, including `bge-m3` | `paraphrase-multilingual-MiniLM-L12-v2` (the current default) |
+| every `gte-*` | every `multilingual-e5-*`, and `e5-large-v2` |
+| `snowflake-arctic-embed-m`, `snowflake-arctic-embed-l` | `Conan-embedding-v1` |
+| | `all-MiniLM-L6-v2`, `all-mpnet-base-v2` |
+| | `nomic-embed-text-v1.5` |
+
+The split is by family, and it is not a rule of thumb — each entry was read from
+that model's own `1_Pooling/config.json`.
+
+::: warning Getting this wrong does not fail
+Both modes return a normalized vector of the correct width. Search keeps working,
+because notes and queries go through the same function — it just retrieves worse
+than the model is capable of, with nothing to indicate it. Versions before 1.4.2
+pooled with `mean` unconditionally, so anyone who pointed `AMEM_EMBED_MODEL` at a
+BGE or GTE model was silently in this state.
+:::
+
 ## Prefixes are the quiet failure
 
 Several models were trained with a required prefix — `query: ` / `passage: `,
