@@ -4,7 +4,7 @@
  * Collection: amem_notes, 384-dim cosine, with agent_id isolation
  */
 
-import { canWrite, canRead } from './auth.js'
+import { canWrite, canRead, SYSTEM_ACTOR } from './auth.js'
 import { getEmbeddingDim, getEmbeddingModel } from './embedding.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -613,12 +613,15 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
 
     /**
      * Story 36: this is the one read that bypasses the agent filter — it fetches
-     * straight by UUID. Pass `readerAgentId` to enforce `readers`; an unreadable
-     * note comes back as `null` (indistinguishable from missing, so nothing leaks,
-     * and callers already handle null). Omitting it skips the check, preserving
-     * behaviour for internal callers that only ever hold their own ids.
+     * straight by UUID. An unreadable note comes back as `null`, indistinguishable
+     * from missing, so nothing leaks and callers already handle it.
+     *
+     * `reader` is required. It used to be optional, and omitting it skipped the
+     * check — which meant the safe behaviour was the one you had to remember to
+     * ask for. Pass `SYSTEM_ACTOR` to read as the engine itself; that reads as a
+     * deliberate act at the call site, where an absent argument did not.
      */
-    async getNote(id: string, readerAgentId?: string): Promise<MemoryNote | null> {
+    async getNote(id: string, reader: string): Promise<MemoryNote | null> {
       await ensureCollection(col)
       try {
         const result = (await qdrant('POST', `/collections/${col}/points`, {
@@ -628,7 +631,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
         if (!result.length) return null
         const note = pointToNote(result[0])
-        if (readerAgentId !== undefined && !canRead(note, readerAgentId)) return null
+        if (reader !== SYSTEM_ACTOR && !canRead(note, reader)) return null
         return note
       } catch {
         return null
@@ -673,25 +676,28 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     },
 
     /**
-     * Story 33: pass `callerAgentId` to enforce the writers policy. Callers that
-     * hold the note already should prefer checking `canWrite` themselves; this
-     * fetch-then-check path exists for callers that only have an id (the plugin's
-     * CRUD hook). Returns false — without writing — when the caller may not write.
-     * Omitting `callerAgentId` skips the check, preserving existing behaviour for
-     * internal callers that are already scoped to their own notes.
+     * Story 33: enforces the writers policy. Returns false — without writing —
+     * when the caller may not write. This fetch-then-check path exists for callers
+     * that only have an id (the plugin's CRUD hook); callers already holding the
+     * note can check `canWrite` themselves and skip a round trip.
+     *
+     * `caller` is required. Pass `SYSTEM_ACTOR` for the engine's own maintenance
+     * writes. The self-read below is a genuine `SYSTEM_ACTOR` case: it fetches the
+     * note in order to decide whether the caller may write it, and gating that
+     * fetch on the same policy it exists to evaluate would be circular.
      */
     async updateNoteContent(
       id: string,
       content: string,
       embedding: number[],
       hash: string,
-      callerAgentId?: string
+      caller: string
     ): Promise<boolean> {
       await ensureCollection(col)
       let existing: MemoryNote | null = null
-      if (callerAgentId !== undefined) {
-        existing = await this.getNote(id)
-        if (existing && !canWrite(existing, callerAgentId)) return false
+      if (caller !== SYSTEM_ACTOR) {
+        existing = await this.getNote(id, SYSTEM_ACTOR)
+        if (existing && !canWrite(existing, caller)) return false
       }
       await qdrant('PUT', `/collections/${col}/points/vectors?wait=true`, {
         points: [{ id, vector: embedding }],
@@ -699,10 +705,15 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       const payload: Record<string, unknown> = { content, hash }
       // Story 41: this overwrite is destructive. Keep the replaced text so a
       // mis-targeted UPDATE stays recoverable — the guard has false negatives,
-      // and this is the last line before content is gone for good. Only done
-      // when we already fetched the note (the caller-scoped CRUD path); the
-      // dedup and merge paths pass no callerAgentId and are unchanged, so they
-      // pay no extra read.
+      // and this is the last line before content is gone for good.
+      //
+      // This used to happen only on the caller-scoped CRUD path, because the
+      // dedup and merge paths passed no identity and so never triggered the
+      // fetch. That was an artifact of the optional parameter rather than a
+      // decision: folding a near-duplicate and merging two notes both destroy
+      // text that had recovery value too. Now every non-system write snapshots,
+      // at the cost of one point read on paths that were already making an LLM
+      // call.
       if (existing) {
         const history: EvolutionEntry[] = [
           ...(existing.evolution_history ?? []),
@@ -801,11 +812,11 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     },
 
     /** Story 33: see `updateNoteContent` — returns false, unwritten, when denied. */
-    async invalidateNote(id: string, callerAgentId?: string): Promise<boolean> {
+    async invalidateNote(id: string, caller: string): Promise<boolean> {
       await ensureCollection(col)
-      if (callerAgentId !== undefined) {
-        const existing = await this.getNote(id)
-        if (existing && !canWrite(existing, callerAgentId)) return false
+      if (caller !== SYSTEM_ACTOR) {
+        const existing = await this.getNote(id, SYSTEM_ACTOR)
+        if (existing && !canWrite(existing, caller)) return false
       }
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
         payload: { is_active: false },
@@ -897,8 +908,8 @@ export async function addNote(note: MemoryNote): Promise<void> {
   return makeCrud(getCollection()).addNote(note)
 }
 
-export async function getNote(id: string, readerAgentId?: string): Promise<MemoryNote | null> {
-  return makeCrud(getCollection()).getNote(id, readerAgentId)
+export async function getNote(id: string, reader: string): Promise<MemoryNote | null> {
+  return makeCrud(getCollection()).getNote(id, reader)
 }
 
 export async function updateNote(note: MemoryNote): Promise<void> {
@@ -914,9 +925,9 @@ export async function updateNoteContent(
   content: string,
   embedding: number[],
   hash: string,
-  callerAgentId?: string
+  caller: string
 ): Promise<boolean> {
-  return makeCrud(getCollection()).updateNoteContent(id, content, embedding, hash, callerAgentId)
+  return makeCrud(getCollection()).updateNoteContent(id, content, embedding, hash, caller)
 }
 
 export async function queryByEmbedding(
@@ -937,8 +948,8 @@ export async function deleteNote(id: string): Promise<void> {
   return makeCrud(getCollection()).deleteNote(id)
 }
 
-export async function invalidateNote(id: string, callerAgentId?: string): Promise<boolean> {
-  return makeCrud(getCollection()).invalidateNote(id, callerAgentId)
+export async function invalidateNote(id: string, caller: string): Promise<boolean> {
+  return makeCrud(getCollection()).invalidateNote(id, caller)
 }
 
 export async function getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {

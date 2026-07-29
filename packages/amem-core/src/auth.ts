@@ -14,6 +14,29 @@
 import type { MemoryNote } from './storage.js'
 
 /**
+ * The engine acting as itself, rather than on behalf of any agent.
+ *
+ * `getNote`, `updateNoteContent` and `invalidateNote` all used to take an
+ * *optional* identity, and omitting it skipped the authorization check. That put
+ * the safe behaviour behind remembering to ask for it, and made "no check here"
+ * invisible — an absent argument looks the same as an oversight. The identity is
+ * now required, and this is what a call declares when it genuinely has no agent
+ * on whose behalf it acts.
+ *
+ * Two call sites use it, both inside storage.ts: the fetch that
+ * `updateNoteContent` and `invalidateNote` perform in order to *evaluate* the
+ * write policy. Gating that read on the policy it exists to check would be
+ * circular. Everything else passes a real agent id — the audit that prompted this
+ * found the identity was already in scope at every one of them.
+ *
+ * The prefix keeps it from colliding with any plausible agent id. It is not a
+ * secret and does not need to be: amem is self-hosted, the operator owns every
+ * memory in the store, and there is no privilege boundary here to defend. This
+ * guards against a call site forgetting to pass an identity, not against a user.
+ */
+export const SYSTEM_ACTOR = '__amem_system__'
+
+/**
  * May `callerAgentId` mutate `note`?
  *
  * True when the caller owns it, is listed in `writers`, or `writers` is open

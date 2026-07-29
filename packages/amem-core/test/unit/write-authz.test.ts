@@ -55,7 +55,16 @@ function foreignSharedNote(): MemoryNote {
     owner: 'agentA',
     readers: ['*'],
     writers: ['agentA'],
-  } as MemoryNote
+    evolution_history: [],
+    category: 'General',
+    note_type: 'memory',
+    topics: [],
+    pending_merge: false,
+    conflict: false,
+    subjects: [],
+    ephemeral: false,
+    low_quality: false,
+  }
 }
 
 function makeCtx(topMatch: { note: MemoryNote; score: number } | null) {

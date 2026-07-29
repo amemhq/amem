@@ -56,7 +56,7 @@ export {
 // The two authorization rules. Consumers that mutate notes they did not fetch
 // themselves (a service, a game brain) should gate on `canWrite`; anything that
 // serves a note fetched by id — a REST get-by-id, a graph walk — on `canRead`.
-export { canWrite, canRead } from './auth.js'
+export { canWrite, canRead, SYSTEM_ACTOR } from './auth.js'
 
 // ── Embedding model + migration ──────────────────────────────────────────────
 // The model is selectable, and its vector width is measured rather than assumed.
