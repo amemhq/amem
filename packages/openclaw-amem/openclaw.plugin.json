@@ -2,6 +2,7 @@
   "id": "openclaw-amem",
   "name": "amem",
   "description": "Catches memories that contradict each other. Notes rewrite themselves as new ones arrive, link into a graph, and stay separated per agent and per person. Runs on a small model. Requires a local Qdrant. 中文走 jieba 分词，提示词有中文版。",
+  "icon": "https://amem.owo.lc/logo.png",
   "version": "1.4.3",
   "kind": "memory",
   "openclaw": {
