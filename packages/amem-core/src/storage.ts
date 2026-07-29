@@ -484,7 +484,10 @@ export async function createAliasRaw(alias: string, collection: string): Promise
  */
 export async function setAliasRaw(alias: string, collection: string): Promise<void> {
   await qdrant('POST', `/collections/aliases`, {
-    actions: [{ delete_alias: { alias_name: alias } }, { create_alias: { collection_name: collection, alias_name: alias } }],
+    actions: [
+      { delete_alias: { alias_name: alias } },
+      { create_alias: { collection_name: collection, alias_name: alias } },
+    ],
   })
 }
 
