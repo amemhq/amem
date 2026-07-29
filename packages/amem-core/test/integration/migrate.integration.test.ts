@@ -149,12 +149,14 @@ describe('migrateCollection (integration — requires Qdrant on :6333)', () => {
     for (const p of after) expect(p.vector).toHaveLength(SRC_DIM)
   })
 
-  it('refuses a target that already holds points', async () => {
+  it('refuses a target holding anything the source does not', async () => {
     const from = name('busy_src')
     const to = name('busy_dst')
     await seed(from, 2)
-    // A target at the right width but not empty: the name is probably wrong, and
-    // mixing two stores cannot be undone by pointing a config back.
+    // Right width, not empty, and holding an id the source has never had. An
+    // interrupted run of this migration could only leave ids that came from the
+    // source, so this is a different store under the name we were about to write
+    // into — and mixing the two is not undone by pointing a config back.
     await createCollectionRaw(to, DST_DIM)
     await upsertPointsRaw(to, [
       { id: '00000000-0000-4000-8000-999999999999', vector: new Array(DST_DIM).fill(0.5), payload: { content: 'squatter' } },
@@ -162,7 +164,28 @@ describe('migrateCollection (integration — requires Qdrant on :6333)', () => {
 
     await expect(
       migrateCollection({ from, to, dryRun: false, logger: { info: () => {}, warn: () => {} } })
-    ).rejects.toThrow(/already holds/)
+    ).rejects.toThrow(/not in "/)
+  })
+
+  it('resumes an interrupted run without redoing what landed', async () => {
+    const from = name('resume_src')
+    const to = name('resume_dst')
+    await seed(from, 6)
+
+    // Stand in for a run that died partway: the target exists at the right width
+    // and holds some of the source's ids, which is exactly what a crash leaves.
+    await createCollectionRaw(to, DST_DIM)
+    const first = (await scrollAllRaw(from)).slice(0, 4)
+    await upsertPointsRaw(
+      to,
+      first.map((p) => ({ id: p.id, vector: new Array(DST_DIM).fill(0.5), payload: p.payload }))
+    )
+
+    const r = await migrateCollection({ from, to, dryRun: false, logger: { info: () => {}, warn: () => {} } })
+
+    expect(r.skipped).toBe(4)
+    expect(r.migrated).toBe(2)
+    expect(await countPointsRaw(to)).toBe(6)
   })
 
   it('refuses a missing source rather than creating an empty target', async () => {
