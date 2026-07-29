@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+  # Retry a publish the gate below would otherwise skip.
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -69,17 +71,28 @@ jobs:
           echo "::error::pnpm install failed after 3 attempts"
           exit 1
 
-      # Publishes when package.json versions are ahead of npm, and does nothing
-      # otherwise.
+      # Whether anything is waiting to be released. The action's own switch takes
+      # the runVersion branch whenever a non-empty changeset exists — it does not
+      # look at which inputs were given — so the only way to keep it from opening
+      # a version PR here is to not run it at all. Hence the gate rather than
+      # dropping the `version:` input, which just made it fall back to a bare
+      # `changeset version` and skip the plugin-manifest sync.
+      - name: Any changesets pending
+        id: pending
+        run: |
+          count=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "$count changeset(s) waiting"
+
+      # Publishes what is already versioned. Reached on the push that merges a
+      # version PR, because that push is what consumes the changesets.
       #
-      # Deliberately no `version:` input. With it, the action opened a release PR
-      # on every push to main the moment any changeset existed — so unreleased
-      # work sitting on main produced a standing PR nobody asked for, and with a
-      # PAT behind it that PR carried my name. Releasing is a decision, not
-      # something that should accumulate in the PR list on its own. To cut one:
-      # `pnpm run version` on a branch, open it, merge it, and this publishes.
+      # workflow_dispatch is the escape hatch: a publish that failed leaves
+      # versions ahead of npm, and if a changeset lands before anyone notices,
+      # the gate above would block the retry forever.
       - name: Publish
         id: changesets
+        if: steps.pending.outputs.count == '0' || github.event_name == 'workflow_dispatch'
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
           publish: pnpm run release

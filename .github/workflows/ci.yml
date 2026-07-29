@@ -68,6 +68,11 @@ jobs:
       - name: Assert config is declared and documented
         run: node tools/assert-config-documented.mjs
 
+      # ClawHub reads the version out of the manifest, not package.json, so the
+      # two drifting apart ships the wrong number to users with nothing failing.
+      - name: Assert the plugin manifest version matches package.json
+        run: node tools/assert-plugin-version-synced.mjs
+
       - name: Format check
         run: pnpm format
 

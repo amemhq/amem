@@ -1,0 +1,65 @@
+# Open (or refresh) the release PR — on request, never on its own.
+#
+# Split out of release.yml because changesets/action opens a version PR whenever
+# a non-empty changeset exists on main, and no input suppresses that. This repo
+# accumulates unreleased work deliberately, so left on `push` that PR is
+# permanently open, force-pushed on every merge, and — since it goes through a
+# PAT — authored under my name. Releasing is a decision; this is the button.
+name: Version
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check RELEASE_PAT is set
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "${RELEASE_PAT:-}" ]; then
+            echo "::error::RELEASE_PAT is not set. Create a fine-grained PAT scoped to amemhq/amem with Contents: read+write and Pull requests: read+write, and store it as the RELEASE_PAT repository secret."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then exit 0; fi
+            echo "::warning::pnpm install failed (attempt $attempt/3); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::pnpm install failed after 3 attempts"
+          exit 1
+
+      # `version:` matters here: without it the action falls back to a bare
+      # `changeset version`, which bumps package.json and leaves
+      # openclaw.plugin.json behind. `pnpm run version` runs the sync.
+      - name: Open the release PR
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
+        with:
+          version: pnpm run version
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
