@@ -72,7 +72,7 @@ export {
   type PoolingMode,
 } from './embedding.js'
 export { EmbeddingDimensionMismatchError, EmbeddingModelMismatchError } from './storage.js'
-export { migrateCollection, type MigrateResult } from './migrate.js'
+export { migrateCollection, switchToMigrated, type MigrateResult } from './migrate.js'
 
 // ── Story 43: cold-layer contradiction sweep ─────────────────────────────────
 // Finds memories that contradict each other and marks the pair. Runs offline on

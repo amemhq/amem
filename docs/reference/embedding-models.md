@@ -38,26 +38,30 @@ on older servers only the width check applies.
 
 ## Changing the model on a store you already have
 
-Rebuild into a new collection. The source is only ever read, so the whole thing is
-reversible until you decide otherwise.
+One command, run until it says it is done:
 
 ```bash
-AMEM_EMBED_MODEL=Xenova/bge-m3 \
-  npx --package=@amemhq/core amem-migrate --to amem_notes_v2
+AMEM_EMBED_MODEL=Xenova/bge-m3 npx --package=@amemhq/core amem-migrate
 ```
 
-That reports what it would do and writes nothing. Add `--apply` when the numbers
-look right, then point `AMEM_COLLECTION` at `amem_notes_v2`. The old collection is
-still there if you change your mind.
+It reports where the store is and what comes next. `--apply` does the next step
+and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
+died two thousand notes in does not start over. `--switch` is the last step: it
+puts the rebuilt store behind the name you already use, so **nothing in your
+configuration changes**.
 
-Re-embedding costs no LLM calls — content, keywords, tags and context all already
-sit in the payload, so it is local compute. The exception is notes written before
-the extraction pipeline filled those fields in: those get re-extracted, which does
-call the LLM. `--no-refresh-fields` skips it and makes the migration completely
-offline, at the cost of leaving those notes embedding from less text than they
-would today.
+Only `--switch` is irreversible. It drops the pre-migration collection, because
+Qdrant will not put an alias over a name a real collection holds — and it refuses
+to do that unless the new store holds at least as much as the old one.
 
-`amem-migrate --help` lists the rest.
+Re-embedding costs no LLM calls: content, keywords, tags and context are already
+in the payload, so it is local compute. The exception is notes written before the
+extraction pipeline filled those fields in, which get re-extracted.
+`--no-refresh-fields` skips that and makes the whole thing offline, at the cost of
+those notes embedding from less text than they would today.
+
+Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
+`switchToMigrated()` are exported — sequence them however your deployment wants.
 
 ## Reading the tables
 

@@ -1,53 +1,55 @@
 #!/usr/bin/env node
 /**
- * amem-migrate — rebuild a collection under a different embedding model.
+ * amem-migrate — move a memory store onto a different embedding model.
  *
- * This exists because `EmbeddingDimensionMismatchError` has to end in a command
- * someone can paste. Describing the procedure in prose is what the error message
- * used to do, and prose is not runnable at 2am when memory has stopped working.
+ * Written for the person who got here from an error message, not for someone
+ * embedding the engine. A developer using `@amemhq/core` directly has
+ * `migrateCollection()` and `switchToMigrated()` and can sequence them however
+ * their deployment wants; this is the other audience, who installed a plugin and
+ * whose memory has stopped working.
  *
- * The engine is a library and never migrates on its own — re-embedding a whole
- * store is minutes of work and a decision the operator makes, not something an
- * import should trigger. So the policy lives here, in a command, and
- * `migrateCollection()` stays a plain function for anyone embedding the engine.
+ * So it takes no decisions from the caller that it can take itself. It works out
+ * which phase the store is in, does the next safe thing, and prints the one
+ * command that comes after. The target collection name is derived; nobody has to
+ * know Qdrant has collections at all.
+ *
+ * Exactly one step is irreversible — dropping the old collection to free its name
+ * for the alias — and that one has its own flag rather than being the tail of a
+ * run that started out read-only.
  */
-import { migrateCollection } from './migrate.js'
-import { getCollection } from './storage.js'
-import { getEmbeddingModel } from './embedding.js'
+import { migrateCollection, switchToMigrated } from './migrate.js'
+import { getCollection, collectionDimRaw, countPointsRaw, scrollIdsRaw, resolveAliasRaw } from './storage.js'
+import { getEmbeddingModel, getEmbeddingDim } from './embedding.js'
 
-const USAGE = `amem-migrate — rebuild a collection under the current embedding model
+const USAGE = `amem-migrate — move a memory store onto a different embedding model
 
-  npx --package=@amemhq/core amem-migrate --to <collection> [options]
+  amem-migrate              what state the store is in, and what comes next
+  amem-migrate --apply      do the next step; safe to interrupt and re-run
+  amem-migrate --switch     put the new store behind the old name (irreversible)
 
 Options
-  --to <name>           Target collection. Required. Must not already hold points.
-  --from <name>         Source collection. Defaults to AMEM_COLLECTION.
-  --apply               Actually write. Without this it is a dry run.
-  --no-refresh-fields   Skip re-extracting keywords/tags for notes that never
-                        had them. Faster, and makes no LLM calls at all.
+  --from-collection <name>  the store to migrate. Defaults to AMEM_COLLECTION.
+  --to-collection <name>    where to build it. Derived from the source if omitted.
+  --no-refresh-fields       skip re-extracting keywords for notes that never had
+                            them. Makes the run completely offline.
   -h, --help
 
-The model is whatever AMEM_EMBED_MODEL says, so set that first:
+The model comes from AMEM_EMBED_MODEL, so set that first:
 
-  AMEM_EMBED_MODEL=Xenova/bge-m3 \\
-    npx --package=@amemhq/core amem-migrate --to amem_notes_v2 --apply
+  AMEM_EMBED_MODEL=Xenova/bge-m3 amem-migrate --apply
 
-The source is only ever read. If the result looks wrong, point AMEM_COLLECTION
-back at it and nothing has been lost.`
+Nothing before --switch touches the original. If a run looks wrong, delete the
+target and start again.`
 
 export interface MigrateArgs {
   help: boolean
-  to?: string
+  apply: boolean
+  switchOver: boolean
   from?: string
-  dryRun: boolean
+  to?: string
   refreshFields: boolean
 }
 
-/**
- * Exported so the defaults can be asserted. `dryRun` in particular: invert that
- * boolean and the command writes to a store while telling the operator it is
- * only looking.
- */
 export function parseArgs(argv: string[]): MigrateArgs {
   const value = (flag: string): string | undefined => {
     const i = argv.indexOf(flag)
@@ -55,11 +57,50 @@ export function parseArgs(argv: string[]): MigrateArgs {
   }
   return {
     help: argv.includes('-h') || argv.includes('--help'),
-    to: value('--to'),
-    from: value('--from'),
-    dryRun: !argv.includes('--apply'),
+    apply: argv.includes('--apply'),
+    switchOver: argv.includes('--switch'),
+    from: value('--from-collection'),
+    to: value('--to-collection'),
     refreshFields: !argv.includes('--no-refresh-fields'),
   }
+}
+
+/**
+ * `amem_notes` → `amem_notes_v2`, and `amem_notes_v2` → `amem_notes_v3`.
+ *
+ * Derived rather than asked for: the name is an implementation detail of a
+ * mechanism the user is not supposed to have to learn, and a wrong guess at it is
+ * how you end up with two half-migrated stores.
+ */
+export function deriveTarget(source: string): string {
+  const m = source.match(/^(.*)_v(\d+)$/)
+  return m ? `${m[1]}_v${Number(m[2]) + 1}` : `${source}_v2`
+}
+
+type Phase =
+  | { kind: 'no-source' }
+  | { kind: 'already-current'; model: string }
+  | { kind: 'not-started'; notes: number }
+  | { kind: 'partial'; done: number; notes: number }
+  | { kind: 'ready-to-switch'; notes: number }
+  | { kind: 'switched'; points: number }
+
+async function detect(from: string, to: string): Promise<Phase> {
+  const alias = await resolveAliasRaw(from)
+  if (alias !== null) return { kind: 'switched', points: await countPointsRaw(from) }
+
+  const sourceDim = await collectionDimRaw(from)
+  if (sourceDim === null) return { kind: 'no-source' }
+
+  const modelDim = await getEmbeddingDim()
+  if (sourceDim === modelDim) return { kind: 'already-current', model: getEmbeddingModel() }
+
+  const notes = await countPointsRaw(from)
+  const targetDim = await collectionDimRaw(to)
+  if (targetDim === null) return { kind: 'not-started', notes }
+
+  const done = (await scrollIdsRaw(to)).size
+  return done >= notes ? { kind: 'ready-to-switch', notes } : { kind: 'partial', done, notes }
 }
 
 async function main(): Promise<void> {
@@ -69,40 +110,68 @@ async function main(): Promise<void> {
     return
   }
 
-  const to = args.to
-  if (!to) {
-    console.error('amem-migrate: --to <collection> is required\n')
-    console.error(USAGE)
+  const from = args.from ?? getCollection()
+  const to = args.to ?? deriveTarget(from)
+  const phase = await detect(from, to)
+
+  console.log(`store:  ${from}`)
+  console.log(`model:  ${getEmbeddingModel()}`)
+
+  switch (phase.kind) {
+    case 'no-source':
+      console.error(`\nNo collection named "${from}". Nothing to migrate.`)
+      process.exitCode = 1
+      return
+
+    case 'switched':
+      console.log(`\n"${from}" is already an alias — ${phase.points} notes, nothing to do.`)
+      return
+
+    case 'already-current':
+      console.log(`\nAlready on ${phase.model}. Nothing to migrate.`)
+      return
+
+    case 'not-started':
+      if (!args.apply) {
+        console.log(`\n${phase.notes} notes to rebuild into "${to}".`)
+        console.log(`Run "amem-migrate --apply" to start. "${from}" is only read.`)
+        return
+      }
+      break
+
+    case 'partial':
+      if (!args.apply) {
+        console.log(`\n${phase.done} of ${phase.notes} rebuilt into "${to}".`)
+        console.log(`Run "amem-migrate --apply" to carry on from there.`)
+        return
+      }
+      break
+
+    case 'ready-to-switch':
+      if (!args.switchOver) {
+        console.log(`\nAll ${phase.notes} notes are in "${to}". "${from}" is untouched.`)
+        console.log(`Check it, then run "amem-migrate --switch" to put "${to}" behind the name "${from}".`)
+        console.log(`That drops "${from}" and cannot be undone.`)
+        return
+      }
+      await switchToMigrated({ name: from, to })
+      console.log(`\nDone. Nothing to change in your config — "${from}" now resolves to "${to}".`)
+      return
+  }
+
+  if (args.switchOver) {
+    console.error(`\nNot finished yet — run "amem-migrate --apply" until it is before switching.`)
     process.exitCode = 1
     return
   }
 
-  const from = args.from ?? getCollection()
-  const { dryRun, refreshFields } = args
-
-  console.log(`model:  ${getEmbeddingModel()}`)
-  console.log(`from:   ${from}`)
-  console.log(`to:     ${to}`)
-  console.log(`mode:   ${dryRun ? 'dry run — nothing will be written' : 'APPLY'}\n`)
-
-  const result = await migrateCollection({ from, to, dryRun, refreshFields })
-
-  console.log(`\n${result.total} notes in source (${result.sourceDim}-dim)`)
-  console.log(`target is ${result.targetDim}-dim`)
-  if (result.missingDerived > 0) {
-    console.log(
-      `${result.missingDerived} note(s) predate the extraction pipeline` +
-        (refreshFields ? `, ${result.refreshed} re-extracted` : ' — skipped (--no-refresh-fields)')
-    )
+  const result = await migrateCollection({ from, to, dryRun: false, refreshFields: args.refreshFields })
+  console.log(`\n${result.migrated + result.skipped} of ${result.total} rebuilt.`)
+  if (result.migrated + result.skipped >= result.total) {
+    console.log(`Check "${to}", then run "amem-migrate --switch".`)
+  } else {
+    console.log(`Run "amem-migrate --apply" again to carry on.`)
   }
-
-  if (dryRun) {
-    console.log(`\nNothing was written. Re-run with --apply to migrate.`)
-    return
-  }
-
-  console.log(`\n${result.migrated} notes written to "${to}".`)
-  console.log(`Point AMEM_COLLECTION at "${to}" to start using it. "${from}" is untouched.`)
 }
 
 main().catch((err: unknown) => {

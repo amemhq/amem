@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const raw = vi.hoisted(() => ({
   scrollAllRaw: vi.fn(),
+  scrollIdsRaw: vi.fn(async () => new Set<string>()),
   countPointsRaw: vi.fn(),
   collectionDimRaw: vi.fn(),
   createCollectionRaw: vi.fn(),
@@ -158,14 +159,32 @@ describe('migrateCollection — refusals', () => {
     await expect(migrateCollection({ from: 'nope', to: 'dst', logger: silent })).rejects.toThrow(/does not exist/)
   })
 
-  it('refuses a target that already holds points', async () => {
-    // A non-empty target means the name is probably wrong, and mixing two stores
-    // together is not undone by pointing a config back.
+  it('resumes when the target holds a subset of the source', async () => {
+    // Ids survive the rebuild, so anything already in the target is a point this
+    // migration put there. Skipping it is what makes an interrupted run cheap to
+    // finish — for notes needing re-extraction, an LLM call not paid twice.
+    raw.scrollAllRaw.mockResolvedValue([point('a'), point('b')])
     raw.collectionDimRaw.mockImplementation(async (c: string) => (c === 'src' ? 384 : 3))
-    raw.countPointsRaw.mockResolvedValue(7)
+    raw.scrollIdsRaw.mockResolvedValue(new Set(['a']))
+    raw.countPointsRaw.mockResolvedValue(2)
+
+    const r = await migrateCollection({ from: 'src', to: 'dst', dryRun: false, logger: silent })
+
+    expect(r.skipped).toBe(1)
+    expect(r.migrated).toBe(1)
+    const written = raw.upsertPointsRaw.mock.calls.flatMap((c) => c[1] as Array<{ id: string }>)
+    expect(written.map((p) => p.id)).toEqual(['b'])
+  })
+
+  it('refuses a target holding anything the source does not', async () => {
+    // Not an interrupted run — a different store under a name we were about to
+    // write into, and mixing the two is not undone by pointing a config back.
+    raw.scrollAllRaw.mockResolvedValue([point('a')])
+    raw.collectionDimRaw.mockImplementation(async (c: string) => (c === 'src' ? 384 : 3))
+    raw.scrollIdsRaw.mockResolvedValue(new Set(['a', 'somebody-elses-note']))
 
     await expect(migrateCollection({ from: 'src', to: 'dst', dryRun: false, logger: silent })).rejects.toThrow(
-      /already holds 7 point/
+      /not in "src"/
     )
   })
 

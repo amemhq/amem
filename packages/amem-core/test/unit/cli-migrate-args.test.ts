@@ -1,53 +1,78 @@
 /**
- * amem-migrate argument defaults.
+ * amem-migrate argument and target-name handling.
  *
- * The one that matters is `dryRun`. Invert it and the command rebuilds a
- * collection while telling the operator it is only reporting — the failure is
- * silent, destructive to the target, and only noticed afterwards. So the default
- * is asserted rather than assumed.
+ * The command works out which phase the store is in and does the next safe
+ * thing, so the flags are only ever confirmations: `--apply` for the work that
+ * leaves the original intact, `--switch` for the one step that does not. Getting
+ * either to default on would make an invocation destroy something the person
+ * running it was only inspecting.
  */
 import { describe, it, expect } from 'vitest'
-import { parseArgs } from '../../src/cli-migrate.js'
+import { parseArgs, deriveTarget } from '../../src/cli-migrate.js'
 
 describe('parseArgs', () => {
-  it('defaults to a dry run, so writing is always something you asked for', () => {
-    expect(parseArgs(['--to', 'x']).dryRun).toBe(true)
+  it('does nothing without a flag, so a bare run is always safe to type', () => {
+    const a = parseArgs([])
+    expect(a.apply).toBe(false)
+    expect(a.switchOver).toBe(false)
   })
 
-  it('writes only with --apply', () => {
-    expect(parseArgs(['--to', 'x', '--apply']).dryRun).toBe(false)
+  it('reads --apply and --switch independently', () => {
+    expect(parseArgs(['--apply']).apply).toBe(true)
+    expect(parseArgs(['--apply']).switchOver).toBe(false)
+    expect(parseArgs(['--switch']).switchOver).toBe(true)
+    expect(parseArgs(['--switch']).apply).toBe(false)
   })
 
-  it('defaults to refreshing fields, and --no-refresh-fields turns it off', () => {
-    expect(parseArgs(['--to', 'x']).refreshFields).toBe(true)
-    expect(parseArgs(['--to', 'x', '--no-refresh-fields']).refreshFields).toBe(false)
-  })
-
-  it('reads --to and --from', () => {
-    const a = parseArgs(['--from', 'old', '--to', 'new'])
+  it('names the collection flags, because the short form did not say what it took', () => {
+    const a = parseArgs(['--from-collection', 'old', '--to-collection', 'new'])
     expect(a.from).toBe('old')
     expect(a.to).toBe('new')
   })
 
-  it('leaves --from undefined so the caller can fall back to AMEM_COLLECTION', () => {
-    // Resolving the default here would bake the collection name into two places.
-    expect(parseArgs(['--to', 'x']).from).toBeUndefined()
+  it('leaves both collections undefined so the caller can derive them', () => {
+    // Resolving defaults here would put the AMEM_COLLECTION fallback and the
+    // target-naming rule in two places each.
+    const a = parseArgs([])
+    expect(a.from).toBeUndefined()
+    expect(a.to).toBeUndefined()
   })
 
-  it('reports missing --to rather than inventing a target', () => {
-    expect(parseArgs([]).to).toBeUndefined()
-    expect(parseArgs(['--apply']).to).toBeUndefined()
+  it('treats a trailing collection flag with no value as absent', () => {
+    // Reads argv[i+1] off the end; must not become the string "undefined".
+    expect(parseArgs(['--to-collection']).to).toBeUndefined()
+    expect(parseArgs(['--apply', '--from-collection']).from).toBeUndefined()
   })
 
-  it('treats a trailing --to with no value as missing', () => {
-    // `--to` last on the line reads argv[i+1] off the end. Must not become the
-    // string "undefined" or a silent empty target.
-    expect(parseArgs(['--apply', '--to']).to).toBeUndefined()
+  it('refreshes fields unless told not to', () => {
+    expect(parseArgs([]).refreshFields).toBe(true)
+    expect(parseArgs(['--no-refresh-fields']).refreshFields).toBe(false)
   })
 
   it('recognises both help spellings', () => {
     expect(parseArgs(['-h']).help).toBe(true)
     expect(parseArgs(['--help']).help).toBe(true)
-    expect(parseArgs(['--to', 'x']).help).toBe(false)
+    expect(parseArgs(['--apply']).help).toBe(false)
+  })
+})
+
+describe('deriveTarget', () => {
+  it('starts at v2', () => {
+    expect(deriveTarget('amem_notes')).toBe('amem_notes_v2')
+  })
+
+  it('counts up from an existing version rather than nesting', () => {
+    // amem_notes_v2_v2 would work and would be unreadable a year later.
+    expect(deriveTarget('amem_notes_v2')).toBe('amem_notes_v3')
+    expect(deriveTarget('amem_notes_v9')).toBe('amem_notes_v10')
+  })
+
+  it('handles a mode B collection name the same way', () => {
+    expect(deriveTarget('amem_alice')).toBe('amem_alice_v2')
+  })
+
+  it('does not treat a v-like suffix that is not a version as one', () => {
+    expect(deriveTarget('memories_v')).toBe('memories_v_v2')
+    expect(deriveTarget('notes_vault')).toBe('notes_vault_v2')
   })
 })
