@@ -705,10 +705,15 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       const payload: Record<string, unknown> = { content, hash }
       // Story 41: this overwrite is destructive. Keep the replaced text so a
       // mis-targeted UPDATE stays recoverable — the guard has false negatives,
-      // and this is the last line before content is gone for good. Only done
-      // when we already fetched the note (the caller-scoped CRUD path); the
-      // dedup and merge paths pass no callerAgentId and are unchanged, so they
-      // pay no extra read.
+      // and this is the last line before content is gone for good.
+      //
+      // This used to happen only on the caller-scoped CRUD path, because the
+      // dedup and merge paths passed no identity and so never triggered the
+      // fetch. That was an artifact of the optional parameter rather than a
+      // decision: folding a near-duplicate and merging two notes both destroy
+      // text that had recovery value too. Now every non-system write snapshots,
+      // at the cost of one point read on paths that were already making an LLM
+      // call.
       if (existing) {
         const history: EvolutionEntry[] = [
           ...(existing.evolution_history ?? []),

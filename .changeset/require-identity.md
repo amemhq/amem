@@ -23,6 +23,14 @@ passes it.
 pass the identity you already have, or `SYSTEM_ACTOR` if you genuinely have none —
 and having to write that down is the point.
 
+One behaviour change falls out of this. The optional identity was carrying two
+meanings: "check authorization" and "this is a caller-scoped write, snapshot the
+replaced text into `evolution_history`". The dedup and merge paths passed nothing
+and so did neither. Now they pass a real identity, so they snapshot too — which is
+the better default: folding a near-duplicate and merging two notes both destroy
+text that had recovery value. It costs one point read on paths that were already
+making an LLM call.
+
 Also stops `amem-api` from ever exposing by-id access without deciding to. No
 route calls these functions today, but that was an accident of what had been
 built; a test now records it.

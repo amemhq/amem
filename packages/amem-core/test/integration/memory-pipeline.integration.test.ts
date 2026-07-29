@@ -72,7 +72,11 @@ describe('memory pipeline (integration — requires Qdrant on :6333)', () => {
   // Story 41: an accepted overwrite must stay recoverable. The similarity guard
   // has false negatives, so this is the last line before content is gone.
   it('keeps the replaced text in evolution_history on a caller-scoped update', async () => {
-    const ctx = createStorageContext(collection)
+    // Its own collection. The fake encoder makes unrelated strings similar
+    // enough to trip the 0.85 dedup threshold, so on the shared collection this
+    // addMemory folded into a note from the test above and the assertions below
+    // ran against content this test never wrote.
+    const ctx = createStorageContext(`${collection}_evo`)
     const original = 'the original wording about quibblewick'
     const id = await addMemory(original, 'main', { storageCtx: ctx })
 
