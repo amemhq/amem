@@ -19,6 +19,11 @@ import {
   scrollAllRaw,
   countPointsRaw,
   collectionDimRaw,
+  scrollIdsRaw,
+  deleteCollectionRaw,
+  resolveAliasRaw,
+  setAliasRaw,
+  createAliasRaw,
   createCollectionRaw,
   upsertPointsRaw,
   pointToNote,
@@ -36,8 +41,10 @@ export interface MigrateResult {
   missingDerived: number
   /** Notes whose fields were re-extracted. 0 unless refreshFields. */
   refreshed: number
-  /** Notes written into the target. 0 on a dry run. */
+  /** Notes written into the target by THIS run. 0 on a dry run. */
   migrated: number
+  /** Notes a previous interrupted run had already written. */
+  skipped: number
   sourceDim: number | null
   targetDim: number
   model: string
@@ -84,13 +91,26 @@ export async function migrateCollection(opts: {
 
   if (dryRun) {
     log('[migrate] dry run — nothing written. Pass dryRun: false to apply.')
-    return { total: notes.length, missingDerived, refreshed: 0, migrated: 0, sourceDim, targetDim, model, dryRun: true }
+    return {
+      total: notes.length,
+      missingDerived,
+      refreshed: 0,
+      migrated: 0,
+      skipped: 0,
+      sourceDim,
+      targetDim,
+      model,
+      dryRun: true,
+    }
   }
 
-  // Refuse to write into a collection that already holds data. Backfilling twice
-  // would be idempotent by id, but a target with UNRELATED points is a sign the
-  // name is wrong, and silently mixing two stores is not recoverable by pointing
-  // a config back.
+  // A target that already holds points is either an interrupted run of this same
+  // migration or somebody else's data. Ids are preserved across the rebuild, so
+  // the two are distinguishable: everything already there must be a point we put
+  // there, which is to say a subset of the source. Anything else means the name
+  // is wrong, and silently mixing two stores is not recoverable by pointing a
+  // config back.
+  let alreadyDone = new Set<string>()
   const existingTargetDim = await collectionDimRaw(to)
   if (existingTargetDim === null) {
     await createCollectionRaw(to, targetDim)
@@ -99,9 +119,18 @@ export async function migrateCollection(opts: {
     if (existingTargetDim !== targetDim) {
       throw new Error(`migrate: target "${to}" exists at ${existingTargetDim}d but the model produces ${targetDim}d`)
     }
-    const existingCount = await countPointsRaw(to)
-    if (existingCount > 0) {
-      throw new Error(`migrate: target "${to}" already holds ${existingCount} point(s); use an empty collection`)
+    const present = await scrollIdsRaw(to)
+    if (present.size > 0) {
+      const sourceIds = new Set(notes.map((n) => n.id))
+      const foreign = [...present].filter((id) => !sourceIds.has(id))
+      if (foreign.length > 0) {
+        throw new Error(
+          `migrate: target "${to}" holds ${foreign.length} point(s) that are not in "${from}" ` +
+            `(e.g. ${foreign[0]}). That is not an interrupted migration — use a different target.`
+        )
+      }
+      alreadyDone = present
+      log(`[migrate] resuming: ${present.size} of ${notes.length} already in ${to}`)
     }
   }
 
@@ -118,6 +147,10 @@ export async function migrateCollection(opts: {
   }
 
   for (const note of notes) {
+    // Written by an earlier run. Skipping it is the point of resuming: for the
+    // notes that need re-extraction this is an LLM call not paid twice.
+    if (alreadyDone.has(note.id)) continue
+
     if (refreshFields && missingDerivedFields(note)) {
       try {
         const built = await llmConstructNote(note.content)
@@ -137,7 +170,7 @@ export async function migrateCollection(opts: {
     buffer.push(point as { id: string; vector: number[]; payload: Record<string, unknown> })
     if (buffer.length >= BATCH) {
       await flush()
-      log(`[migrate] ${migrated}/${notes.length}`)
+      log(`[migrate] ${alreadyDone.size + migrated}/${notes.length}`)
     }
   }
   await flush()
@@ -147,10 +180,76 @@ export async function migrateCollection(opts: {
     warn(`[migrate] target holds ${finalCount} point(s) but the source had ${notes.length} — check before switching`)
   }
 
-  log(
-    `[migrate] done: ${migrated} migrated, ${refreshed} re-extracted. ` +
-      `"${from}" is untouched — switch with AMEM_COLLECTION=${to}, and keep the old one until you are satisfied.`
-  )
+  log(`[migrate] done: ${migrated} written, ${alreadyDone.size} already present, ${refreshed} re-extracted.`)
 
-  return { total: notes.length, missingDerived, refreshed, migrated, sourceDim, targetDim, model, dryRun: false }
+  return {
+    total: notes.length,
+    missingDerived,
+    refreshed,
+    migrated,
+    skipped: alreadyDone.size,
+    sourceDim,
+    targetDim,
+    model,
+    dryRun: false,
+  }
+}
+
+/**
+ * Put the migrated collection behind the name the source used, and drop the
+ * source.
+ *
+ * This is the only irreversible step in the whole migration, which is why it is
+ * a separate call rather than the tail of `migrateCollection`. Everything before
+ * it leaves the original untouched and can simply be abandoned.
+ *
+ * Qdrant cannot rename a collection and cannot create an alias over a name a real
+ * collection holds (409), so freeing the name means deleting it — after checking
+ * the target holds at least as much as the source, because that check is the last
+ * thing standing between a half-finished migration and a deleted store.
+ */
+export async function switchToMigrated(opts: {
+  /** The name readers are configured with. Becomes an alias. */
+  name: string
+  /** The collection built by `migrateCollection`. */
+  to: string
+  logger?: { info: (m: string) => void; warn: (m: string) => void }
+}): Promise<{ name: string; to: string; moved: number }> {
+  const { name, to } = opts
+  const log = opts.logger?.info ?? ((m: string) => console.log(m))
+
+  if (name === to) throw new Error(`switch: "${name}" and "${to}" are the same collection`)
+
+  const already = await resolveAliasRaw(name)
+  if (already === to) {
+    log(`[switch] "${name}" already points at "${to}" — nothing to do`)
+    return { name, to, moved: await countPointsRaw(to) }
+  }
+
+  const targetCount = await countPointsRaw(to)
+  if (targetCount === 0) throw new Error(`switch: "${to}" is empty — migrate into it first`)
+
+  if (already === null) {
+    // `name` is a real collection: the pre-migration store. Verify before it goes.
+    const sourceCount = await countPointsRaw(name)
+    if (targetCount < sourceCount) {
+      throw new Error(
+        `switch: "${to}" holds ${targetCount} point(s) but "${name}" still holds ${sourceCount}. ` +
+          `The migration is not finished — run it again before switching.`
+      )
+    }
+    log(`[switch] verified ${targetCount} in "${to}" against ${sourceCount} in "${name}"`)
+    await deleteCollectionRaw(name)
+    log(`[switch] dropped "${name}"`)
+    // create, not set: setAliasRaw deletes first, and there is no alias to
+    // delete on a name that was a real collection a moment ago.
+    await createAliasRaw(name, to)
+  } else {
+    // `name` is already an alias pointing somewhere else — a later migration.
+    // Nothing to delete, and the swap is atomic.
+    await setAliasRaw(name, to)
+  }
+
+  log(`[switch] "${name}" now resolves to "${to}"`)
+  return { name, to, moved: targetCount }
 }

@@ -429,6 +429,65 @@ export async function upsertPointsRaw(
   await qdrant('PUT', `/collections/${collection}/points?wait=true`, { points })
 }
 
+/**
+ * Just the ids in a collection. `scrollAllRaw` pulls payloads and vectors too,
+ * which is the whole store over the wire — a resumed migration only needs to know
+ * what it already wrote.
+ */
+export async function scrollIdsRaw(collection: string, limit = 10000): Promise<Set<string>> {
+  const ids = new Set<string>()
+  let offset: unknown = undefined
+  for (;;) {
+    const body: Record<string, unknown> = { with_payload: false, with_vector: false, limit }
+    if (offset !== undefined && offset !== null) body.offset = offset
+    const res = (await qdrant('POST', `/collections/${collection}/points/scroll`, body)) as {
+      points: Array<{ id: string }>
+      next_page_offset?: unknown
+    }
+    for (const p of res.points) ids.add(String(p.id))
+    offset = res.next_page_offset
+    if (offset === undefined || offset === null || res.points.length === 0) break
+  }
+  return ids
+}
+
+/** Drop a collection. Only the migration cutover uses this. */
+export async function deleteCollectionRaw(collection: string): Promise<void> {
+  await qdrant('DELETE', `/collections/${collection}`)
+}
+
+/** Which collection an alias points at, or null if the name is not an alias. */
+export async function resolveAliasRaw(alias: string): Promise<string | null> {
+  try {
+    const res = (await qdrant('GET', `/aliases`)) as {
+      aliases: Array<{ alias_name: string; collection_name: string }>
+    }
+    return res.aliases.find((a) => a.alias_name === alias)?.collection_name ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Create an alias for a name nothing currently holds. */
+export async function createAliasRaw(alias: string, collection: string): Promise<void> {
+  await qdrant('POST', `/collections/aliases`, {
+    actions: [{ create_alias: { collection_name: collection, alias_name: alias } }],
+  })
+}
+
+/**
+ * Point `alias` at `collection`, replacing whatever it pointed at.
+ *
+ * Both actions go in one request because Qdrant applies them atomically — a
+ * separate delete and create would leave a window where the name resolves to
+ * nothing, and that name is what every reader is configured to use.
+ */
+export async function setAliasRaw(alias: string, collection: string): Promise<void> {
+  await qdrant('POST', `/collections/aliases`, {
+    actions: [{ delete_alias: { alias_name: alias } }, { create_alias: { collection_name: collection, alias_name: alias } }],
+  })
+}
+
 // ── Payload mapping ───────────────────────────────────────────────────────────
 export function noteToPoint(note: MemoryNote) {
   return {
