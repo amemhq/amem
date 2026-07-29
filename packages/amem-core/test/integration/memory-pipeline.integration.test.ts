@@ -80,7 +80,7 @@ describe('memory pipeline (integration — requires Qdrant on :6333)', () => {
     const ok = await ctx.updateNoteContent(id, replacement, fakeEncode(replacement), 'newhash', 'main')
     expect(ok).toBe(true)
 
-    const note = await ctx.getNote(id)
+    const note = await ctx.getNote(id, 'main')
     expect(note?.content).toBe(replacement)
 
     const snapshot = note?.evolution_history?.find((e) => e.action === 'crud_update')

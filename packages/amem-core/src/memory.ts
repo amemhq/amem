@@ -204,7 +204,7 @@ export async function addMemory(
     // our own note rather than overwriting someone else's memory.
     if (canWrite(topMatch[0].note, agentId)) {
       console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
-      await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash)
+      await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash, agentId)
       return topMatch[0].note.id
     }
     console.log(
@@ -293,7 +293,7 @@ export async function addMemory(
         // may write. A linked note can be another agent's shared note; the forward
         // link on our own note still stands.
         for (const lid of linkedIds) {
-          const linked = await ctx.getNote(lid)
+          const linked = await ctx.getNote(lid, agentId)
           if (linked && !linked.links.includes(note.id)) {
             if (!canWrite(linked, agentId)) {
               console.log(`[link] back-link into ${lid.slice(0, 8)} skipped — not writable by ${logSafe(agentId)}`)
@@ -308,7 +308,7 @@ export async function addMemory(
         if (shouldRunEvolution()) {
           console.log(`  [evo] threshold reached, running evolution for ${Math.min(linkedIds.length, 3)} linked notes`)
           for (const lid of linkedIds.slice(0, 3)) {
-            const linked = await ctx.getNote(lid)
+            const linked = await ctx.getNote(lid, agentId)
             if (!linked) continue
             // Story 33: evolution rewrites the linked note's tags/context/embedding.
             // Skip notes we may not write (e.g. another agent's shared note) — this
@@ -735,7 +735,7 @@ export async function mergeSimilarNotes(agentId: string, storageCtx?: StorageCon
       const mergedContent = judgment.mergedContent || pendingNote.content
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)
       await ctx.patchNotePayload(bestNeighbor.id, {
         evolution_history: JSON.stringify(oldHistory),
         evolution_type: 'EVOLVE',
@@ -759,7 +759,7 @@ export async function mergeSimilarNotes(agentId: string, storageCtx?: StorageCon
       const mergedContent = judgment.mergedContent || `${bestNeighbor.content}；${pendingNote.content}`
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)
       await ctx.patchNotePayload(bestNeighbor.id, {
         evolution_history: JSON.stringify(oldHistory),
         evolution_type: 'EXPAND',
@@ -826,7 +826,7 @@ export async function mergeSimilarNotes(agentId: string, storageCtx?: StorageCon
 
       const newEmbedding = await encode(result.merged)
       const newHash = createHash('md5').update(result.merged).digest('hex')
-      await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash)
+      await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash, agentId)
       await ctx.deleteNote(dropNote.id)
       deletedIds.add(dropNote.id)
       mergedCount++
@@ -994,7 +994,7 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
       await ctx.updateNote(keepNote)
 
       // 软删除 DropNote
-      await ctx.invalidateNote(dropNote.id)
+      await ctx.invalidateNote(dropNote.id, agentId)
 
       // 级联更新 links
       await ctx.replaceLinkReferences(dropNote.id, keepNote.id, agentId)
