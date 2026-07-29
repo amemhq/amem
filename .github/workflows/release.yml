@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
   # OIDC token for npm trusted publishing. pnpm exchanges it with npmjs.org for
   # a short-lived publish token and attaches a sigstore provenance attestation —
   # provided a trusted publisher is configured for each package on npmjs.com
@@ -38,9 +39,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # Same PAT as the publish step: this is the credential persisted into
-          # the git remote, so it is what pushes the version tags changeset
-          # publish creates.
+          # Same PAT as the changesets step below, for the same reason: this is
+          # the credential persisted into the git remote, so it is what pushes
+          # `changeset-release/main`. A push made with GITHUB_TOKEN raises no
+          # events, which would leave the release PR's `synchronize` runs dead
+          # even once the PR itself was created by a real user.
           token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
@@ -69,24 +72,28 @@ jobs:
           echo "::error::pnpm install failed after 3 attempts"
           exit 1
 
-      # Publishes when package.json versions are ahead of npm, and does nothing
-      # otherwise.
-      #
-      # Deliberately no `version:` input. With it, the action opened a release PR
-      # on every push to main the moment any changeset existed — so unreleased
-      # work sitting on main produced a standing PR nobody asked for, and with a
-      # PAT behind it that PR carried my name. Releasing is a decision, not
-      # something that should accumulate in the PR list on its own. To cut one:
-      # `pnpm run version` on a branch, open it, merge it, and this publishes.
-      - name: Publish
+      # Opens the release PR when changesets exist; once that PR is merged
+      # (versions bumped), the next run publishes to npm.
+      - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
+          version: pnpm run version
           publish: pnpm run release
+          # Default is a bare "Version Packages", which reads as noise in the PR
+          # list and breaks the repo's conventional-commit history. Name it for
+          # what it is; the same string is used for the squash-merge commit.
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
         env:
-          # A PAT, not GITHUB_TOKEN: this step pushes tags and creates GitHub
-          # Releases, and a GITHUB_TOKEN push raises no events, so nothing
-          # downstream of a release would ever fire.
+          # A PAT, not GITHUB_TOKEN, for two reasons that both bite this repo:
+          # GITHUB_TOKEN cannot open a pull request at all under an org that has
+          # not enabled "Allow GitHub Actions to create and approve pull
+          # requests" (the transfer to amemhq reset that, and this step started
+          # failing with "GitHub Actions is not permitted to create or approve
+          # pull requests"); and even where it can, the PR it opens triggers no
+          # workflows, so the release PR's CI sits at action_required until
+          # somebody approves it by hand every single release.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # Fallback auth for when OIDC trusted publishing is unavailable. pnpm
           # prefers OIDC when it can (and only then is provenance attached), so
@@ -100,7 +107,7 @@ jobs:
       # Mirror the plugin to ClawHub from the SAME freshly-built dist/ that was
       # just published to npm, so the two registries stay on the exact same
       # version. Runs only when changesets actually published openclaw-amem —
-      # skipped on the pushes that release nothing, which is most of them.
+      # skipped on the runs that merely open/update the Version PR.
       - name: Publish plugin to ClawHub
         if: steps.changesets.outputs.published == 'true' && contains(steps.changesets.outputs.publishedPackages, 'openclaw-amem')
         working-directory: packages/openclaw-amem
