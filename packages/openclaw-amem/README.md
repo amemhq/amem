@@ -39,6 +39,7 @@ Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv
 - Node.js 24 (18+ works; 24/26 supported)
 - Qdrant running on `:6333`
 - An LLM: `ANTHROPIC_API_KEY` by default, or any OpenAI-compatible provider — see [LLM provider](#llm-provider)
+- ~1.1 GB of disk for the embedding model, downloaded once on first run
 
 ## Installation
 
@@ -87,6 +88,15 @@ Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
 ```bash
 openclaw gateway restart
 ```
+
+First run downloads the embedding model (`bge-m3`, 1.08 GB) and caches it. Later
+restarts are instant. Want something smaller? `AMEM_EMBED_MODEL=onnx-community/gte-multilingual-base`
+is about a third the size and reads text just as long — set it **before** you have
+memories, since changing it afterwards means a [migration](https://amem.owo.lc/reference/embedding-models#changing-the-model-on-a-store-you-already-have).
+
+Upgrading from 1.x downloads nothing. Your existing memories keep the model that
+built them, and the plugin says so at startup along with the one command that
+moves them.
 
 ## LLM provider
 
