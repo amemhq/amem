@@ -3,8 +3,6 @@ name: Release
 on:
   push:
     branches: [main]
-  # Retry a publish the gate below would otherwise skip.
-  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -12,6 +10,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
   # OIDC token for npm trusted publishing. pnpm exchanges it with npmjs.org for
   # a short-lived publish token and attaches a sigstore provenance attestation —
   # provided a trusted publisher is configured for each package on npmjs.com
@@ -40,9 +39,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # Same PAT as the publish step: this is the credential persisted into
-          # the git remote, so it is what pushes the version tags changeset
-          # publish creates.
+          # Same PAT as the changesets step: this is the credential persisted
+          # into the git remote, so it is what pushes `changeset-release/main`
+          # and the version tags. A push made with GITHUB_TOKEN raises no events,
+          # which would leave the release PR's own checks dead.
           token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
@@ -71,35 +71,31 @@ jobs:
           echo "::error::pnpm install failed after 3 attempts"
           exit 1
 
-      # Whether anything is waiting to be released. The action's own switch takes
-      # the runVersion branch whenever a non-empty changeset exists — it does not
-      # look at which inputs were given — so the only way to keep it from opening
-      # a version PR here is to not run it at all. Hence the gate rather than
-      # dropping the `version:` input, which just made it fall back to a bare
-      # `changeset version` and skip the plugin-manifest sync.
-      - name: Any changesets pending
-        id: pending
-        run: |
-          count=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "$count changeset(s) waiting"
-
-      # Publishes what is already versioned. Reached on the push that merges a
-      # version PR, because that push is what consumes the changesets.
+      # Opens or refreshes the release PR while changesets are pending, and
+      # publishes on the push that merges it (which is what consumes them).
       #
-      # workflow_dispatch is the escape hatch: a publish that failed leaves
-      # versions ahead of npm, and if a changeset lands before anyone notices,
-      # the gate above would block the retry forever.
-      - name: Publish
+      # `version:` is not optional in practice. Without it the action still takes
+      # the same branch — its switch keys on `case hasChangesets` alone — but
+      # `runVersion` receives no script and falls back to a bare
+      # `changeset version`, which skips tools/sync-plugin-version.mjs and leaves
+      # openclaw.plugin.json behind. ClawHub reads the version out of that
+      # manifest.
+      - name: Create Release PR or Publish
         id: changesets
-        if: steps.pending.outputs.count == '0' || github.event_name == 'workflow_dispatch'
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
+          version: pnpm run version
           publish: pnpm run release
+          # Default is a bare "Version Packages", which reads as noise in the PR
+          # list and breaks the repo's conventional-commit history.
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
         env:
-          # A PAT, not GITHUB_TOKEN: this step pushes tags and creates GitHub
-          # Releases, and a GITHUB_TOKEN push raises no events, so nothing
-          # downstream of a release would ever fire.
+          # A PAT, not GITHUB_TOKEN, for two reasons that both bite this repo:
+          # GITHUB_TOKEN cannot open a pull request at all under an org that has
+          # not enabled "Allow GitHub Actions to create and approve pull
+          # requests"; and even where it can, the PR it opens triggers no
+          # workflows, so its checks sit at action_required forever.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # Fallback auth for when OIDC trusted publishing is unavailable. pnpm
           # prefers OIDC when it can (and only then is provenance attached), so

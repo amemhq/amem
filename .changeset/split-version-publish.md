@@ -2,5 +2,5 @@
 'openclaw-amem': patch
 ---
 
-No code change — release workflow split, and a guard on the plugin manifest
-version.
+No code change — CI skips the redundant matrix on the release PR, and the plugin
+manifest version is now asserted.

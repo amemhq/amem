@@ -16,7 +16,13 @@ permissions:
   contents: read
 
 jobs:
+  # The release PR carries main's code plus generated version bumps and CHANGELOG
+  # entries — main has already run all of this against those exact sources. Every
+  # merge to main force-pushes that branch, so leaving it in re-ran the full
+  # matrix plus integration for nothing, every time. `release-pr` below covers
+  # what the version bump itself can break.
   check:
+    if: github.head_ref != 'changeset-release/main'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -124,6 +130,7 @@ jobs:
   # container, with the LLM and embeddings mocked (deterministic, no API calls,
   # no model download). Unit tests run in the check job above.
   integration:
+    if: github.head_ref != 'changeset-release/main'
     runs-on: ubuntu-latest
     services:
       qdrant:
@@ -171,6 +178,38 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
+
+  # The release PR's own check. Its diff is package.json versions, CHANGELOGs and
+  # deleted changeset files, so the only things that can be wrong are the ones a
+  # generated version bump gets wrong: a manifest left behind by a bare
+  # `changeset version`, and a lockfile that the bump did not update.
+  release-pr:
+    if: github.head_ref == 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # --frozen-lockfile is the assertion: `changeset version` edits
+      # package.json without running install, so a bump that should have moved
+      # the lockfile and did not fails right here.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Assert the plugin manifest version matches package.json
+        run: node tools/assert-plugin-version-synced.mjs
+
+      - name: Assert no published package depends on a private one
+        run: node tools/assert-no-private-deps.mjs
 
   changeset-check:
     # Skip PRs that never carry a changeset by design: the changesets bot's
@@ -227,7 +266,7 @@ jobs:
   # single stable name, changing the Node matrix never breaks the ruleset.
   ci-ok:
     if: always()
-    needs: [check, secret-scan, integration, changeset-check]
+    needs: [check, secret-scan, integration, changeset-check, release-pr]
     runs-on: ubuntu-latest
     steps:
       - name: Verify every CI job succeeded or was skipped
