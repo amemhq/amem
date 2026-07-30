@@ -6,9 +6,16 @@
  * entirely and an unconfigured install gets the library defaults it always had.
  * Returning a string like 'cpu' or 'fp32' would look equivalent and would not be —
  * it would pin behaviour that Transformers.js is free to change per platform.
+ *
+ * Dtype has exactly one exception to that, for amem's own default model. It is
+ * asserted here in both directions because the whole risk is it leaking onto a
+ * model that has no fp16 to load.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { getEmbeddingDevice, getEmbeddingDtype } from '../../src/embedding.js'
+import { getEmbeddingDevice, getEmbeddingDtype, DEFAULT_EMBEDDING_MODEL } from '../../src/embedding.js'
+
+/** Any model that is not ours, so the dtype default does not apply. */
+const OTHER_MODEL = 'Alibaba-NLP/gte-multilingual-base'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -42,16 +49,19 @@ describe('getEmbeddingDevice', () => {
 })
 
 describe('getEmbeddingDtype', () => {
-  it('is undefined when unset', () => {
+  it('is undefined when unset, for any model but our own', () => {
+    vi.stubEnv('AMEM_EMBED_MODEL', OTHER_MODEL)
     expect(getEmbeddingDtype()).toBeUndefined()
   })
 
   it('passes a value through', () => {
+    vi.stubEnv('AMEM_EMBED_MODEL', OTHER_MODEL)
     vi.stubEnv('AMEM_EMBED_DTYPE', 'fp16')
     expect(getEmbeddingDtype()).toBe('fp16')
   })
 
   it('treats empty and whitespace as unset', () => {
+    vi.stubEnv('AMEM_EMBED_MODEL', OTHER_MODEL)
     vi.stubEnv('AMEM_EMBED_DTYPE', '')
     expect(getEmbeddingDtype()).toBeUndefined()
     vi.stubEnv('AMEM_EMBED_DTYPE', '  ')
@@ -65,5 +75,34 @@ describe('getEmbeddingDtype', () => {
     vi.stubEnv('AMEM_EMBED_DEVICE', 'cuda')
     expect(getEmbeddingDtype()).toBe('int8')
     expect(getEmbeddingDevice()).toBe('cuda')
+  })
+
+  // The one exception to the absence property above. fp16 halves the download for
+  // the model amem ships (2.16 GB → 1.08 GB), but several models this project
+  // documents publish fp32 only — multilingual-e5-large-instruct and
+  // Qwen3-Embedding-4B among them — so it is scoped to the one model we checked.
+  describe('the shipped default', () => {
+    it('gets fp16 with nothing configured, which is what a fresh install is', () => {
+      expect(getEmbeddingDtype()).toBe('fp16')
+    })
+
+    it('gets fp16 when named explicitly too', () => {
+      vi.stubEnv('AMEM_EMBED_MODEL', DEFAULT_EMBEDDING_MODEL)
+      expect(getEmbeddingDtype()).toBe('fp16')
+    })
+
+    it('still yields to AMEM_EMBED_DTYPE', () => {
+      vi.stubEnv('AMEM_EMBED_MODEL', DEFAULT_EMBEDDING_MODEL)
+      vi.stubEnv('AMEM_EMBED_DTYPE', 'fp32')
+      expect(getEmbeddingDtype()).toBe('fp32')
+    })
+
+    it.each(['intfloat/multilingual-e5-large-instruct', 'onnx-community/Qwen3-Embedding-4B-ONNX', OTHER_MODEL])(
+      'does not leak onto %s',
+      (model) => {
+        vi.stubEnv('AMEM_EMBED_MODEL', model)
+        expect(getEmbeddingDtype()).toBeUndefined()
+      }
+    )
   })
 })

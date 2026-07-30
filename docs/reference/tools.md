@@ -65,7 +65,7 @@ An array of memory objects ranked by relevance:
 
 **Retrieval pipeline**
 
-1. Embeds query locally (ONNX, 384-dim)
+1. Embeds query locally (ONNX)
 2. BM25 ranking with Jieba tokenization for CJK
 3. Dense vector cosine similarity search
 4. RRF fusion (k=60)

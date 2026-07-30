@@ -27,6 +27,7 @@ import {
   conflictSweep,
   EmbeddingDimensionMismatchError,
   EmbeddingModelMismatchError,
+  MixedEmbeddingModelsError,
   isPlausibleUpdateTarget,
   type AmemPluginConfig,
 } from '@amemhq/core'
@@ -125,11 +126,15 @@ function register(api: {
   // Pre-warm: ensure the default Qdrant collection exists.
   // An embedding mismatch is not a transient startup hiccup — memory is simply
   // broken until someone acts — so it is logged as an error with the fix, not as
-  // one more warning to scroll past. Both mismatch types qualify: the model one
-  // does not stop writes, but it silently mixes two vector geometries, which is
-  // worse to discover late than a hard failure.
+  // one more warning to scroll past. All three qualify: the model one does not
+  // stop writes, but it silently mixes two vector geometries, which is worse to
+  // discover late than a hard failure.
   ensureCollection(pluginConfig.collection).catch((e) => {
-    if (e instanceof EmbeddingDimensionMismatchError || e instanceof EmbeddingModelMismatchError) {
+    if (
+      e instanceof EmbeddingDimensionMismatchError ||
+      e instanceof EmbeddingModelMismatchError ||
+      e instanceof MixedEmbeddingModelsError
+    ) {
       logger.error(`openclaw-amem: memory is UNUSABLE — ${e.message}`)
     } else {
       logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)

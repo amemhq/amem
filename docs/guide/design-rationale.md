@@ -177,8 +177,8 @@ properly and stayed put, for three reasons.
 for the fp32-only ONNX. But it fails past 512 tokens under `node-llama-cpp`
 (`Failed to get embeddings for token 512`,
 [QwenLM/Qwen3-Embedding#35](https://github.com/QwenLM/Qwen3-Embedding/issues/35)),
-unaffected by context or batch settings. amem is moving off a model *because* it
-truncates at 128 tokens. Trading that for one that breaks at 512 is not the fix.
+unaffected by context or batch settings. amem moved off a model *because* it truncates
+at 128 tokens. Trading that for one that breaks at 512 is not the fix.
 
 **The acceleration argument was based on something we never checked.** The case
 for GGUF leaned on Metal on Apple Silicon, against ONNX being CPU-only. ONNX is not

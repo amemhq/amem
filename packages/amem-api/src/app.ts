@@ -193,7 +193,7 @@ export function createApp(opts: FastifyServerOptions = {}): FastifyInstance {
   app.post<{ Body: AgentBody }>('/v1/maintenance/quality-scan', { schema: { body: agentSchema } }, async (req) => {
     const { agentId = DEFAULT_AGENT } = req.body
     const flagged = await scanLowQuality(agentId)
-    // A MemoryNote carries a 384-float embedding, its evolution history and
+    // A MemoryNote carries its full embedding, its evolution history and
     // its ACL. The caller needs to know which notes are suspect, not to be
     // handed the notes themselves.
     return { items: flagged.map(({ note, reasons }) => ({ noteId: note.id, reasons })) }

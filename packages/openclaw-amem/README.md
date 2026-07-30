@@ -29,7 +29,7 @@ Requires a local [Qdrant](https://qdrant.tech). Implements [A-MEM](https://arxiv
 - 🧠 **Knowledge vs episodic** — durable knowledge notes skip consolidation & time-decay; topic tags for precise recall.
 - 🧹 **Self-consolidating** — daily 02:30 in-process merge of semantic duplicates with link cascading.
 - 🔐 **Per-agent isolation** — private by default; explicit `owner`/`readers`/`writers`; Mode A (shared collection) or Mode B (dedicated collection).
-- 🀄 **Chinese-optimized** & local embeddings (Transformers.js, 384-dim) — no Python, no external embedding API.
+- 🀄 **Chinese-optimized** & local embeddings (Transformers.js) — no Python, no external embedding API.
 
 → Full feature list & internals: **[@amemhq/core README](../amem-core)** · **[docs](https://amem.owo.lc)**.
 

@@ -8,7 +8,7 @@
  * running it was only inspecting.
  */
 import { describe, it, expect } from 'vitest'
-import { parseArgs, deriveTarget } from '../../src/cli-migrate.js'
+import { parseArgs, deriveTarget, carried } from '../../src/cli-migrate.js'
 
 describe('parseArgs', () => {
   it('does nothing without a flag, so a bare run is always safe to type', () => {
@@ -74,5 +74,27 @@ describe('deriveTarget', () => {
   it('does not treat a v-like suffix that is not a version as one', () => {
     expect(deriveTarget('memories_v')).toBe('memories_v_v2')
     expect(deriveTarget('notes_vault')).toBe('notes_vault_v2')
+  })
+})
+
+describe('carried', () => {
+  it('adds nothing when the defaults were used', () => {
+    expect(carried(parseArgs([]))).toBe('')
+    expect(carried(parseArgs(['--apply']))).toBe('')
+  })
+
+  it('repeats the collection flags into the next command', () => {
+    // The mode B case. "Run amem-migrate --apply" without these falls back to
+    // AMEM_COLLECTION and rebuilds a store the operator was not looking at.
+    expect(carried(parseArgs(['--from-collection', 'amem_alice']))).toBe(' --from-collection amem_alice')
+    expect(carried(parseArgs(['--from-collection', 'a', '--to-collection', 'b']))).toBe(
+      ' --from-collection a --to-collection b'
+    )
+  })
+
+  it('leaves out --no-refresh-fields', () => {
+    // Deliberate: forgetting it costs an LLM call on notes that never had
+    // keywords, forgetting a collection migrates the wrong store.
+    expect(carried(parseArgs(['--no-refresh-fields']))).toBe('')
   })
 })

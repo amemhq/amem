@@ -1,11 +1,20 @@
 /**
  * storage.ts — Qdrant vector storage for A-MEM
  * Uses native fetch (Node 18+) to avoid undici compatibility issues with Node v26
- * Collection: amem_notes, 384-dim cosine, with agent_id isolation
+ * Collection: amem_notes, cosine, width set by the embedding model, with
+ * agent_id isolation
  */
 
 import { canWrite, canRead, SYSTEM_ACTOR } from './auth.js'
-import { getEmbeddingDim, getEmbeddingModel } from './embedding.js'
+import {
+  DEFAULT_EMBEDDING_MODEL,
+  LEGACY_DEFAULT_DIM,
+  LEGACY_DEFAULT_EMBEDDING_MODEL,
+  getEmbeddingDim,
+  getEmbeddingModel,
+  getPinnedEmbeddingModel,
+  pinEmbeddingModel,
+} from './embedding.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -160,24 +169,22 @@ export class EmbeddingDimensionMismatchError extends Error {
 }
 
 /**
- * The tail both mismatch errors share: how to rebuild, and how to switch over.
+ * The tail both mismatch errors share: the one command that fixes it.
  *
- * "Set AMEM_COLLECTION" alone is only right for the default collection. A mode B
- * collection is named by the plugin's `collection` setting (or an
- * `agents.<id>.collection` override) and handed straight to
- * `createStorageContext`, which never consults the env var for it — so a mode B
- * operator following that instruction would repoint the *default* store at
- * someone else's migrated collection and still be looking at the original error.
+ * `--from-collection` is always passed, even though it defaults to
+ * AMEM_COLLECTION. A mode B collection is named by the plugin's `collection`
+ * setting (or an `agents.<id>.collection` override) and handed straight to
+ * `createStorageContext`, which never consults the env var — so the default would
+ * migrate the wrong store and leave the operator looking at the same error.
  */
 function migrationHint(collection: string, targetModel: string): string {
   return (
-    `migrate to a new collection:\n\n` +
+    `migrate onto it:\n\n` +
     `  AMEM_EMBED_MODEL=${targetModel} \\\n` +
-    `    npx --package=@amemhq/core amem-migrate --to ${collection}_v2\n\n` +
-    `That is a dry run; add --apply to write. "${collection}" is only read, so ` +
-    `nothing is lost either way. When it looks right, point whatever names this ` +
-    `collection at the new one — AMEM_COLLECTION, or the plugin's "collection" ` +
-    `setting if this agent has its own. ` +
+    `    npx --package=@amemhq/core amem-migrate --from-collection ${collection}\n\n` +
+    `That only reports; it takes --apply to write anything, and "${collection}" is ` +
+    `read either way. The new store ends up behind the name you already use, so ` +
+    `there is nothing to change in your config afterwards. ` +
     `See https://amem.owo.lc/reference/embedding-models.`
   )
 }
@@ -204,6 +211,34 @@ export class EmbeddingModelMismatchError extends Error {
         migrationHint(collection, configuredModel)
     )
     this.name = 'EmbeddingModelMismatchError'
+  }
+}
+
+/**
+ * Two collections open in one process that need two different models.
+ *
+ * Only reachable in mode B, and normally only mid-migration: per-agent
+ * collections built before 2.0.0 all resolve to the same old model, until one of
+ * them is migrated and the others are not. One process embeds with one model, so
+ * this has to stop rather than pick a winner — picking would write vectors of the
+ * wrong width into whichever collection lost.
+ */
+export class MixedEmbeddingModelsError extends Error {
+  constructor(
+    readonly collection: string,
+    readonly wanted: string,
+    readonly inUse: string
+  ) {
+    super(
+      `Collection "${collection}" was built with "${wanted}", but this process is ` +
+        `already embedding with "${inUse}" for another collection. One process can ` +
+        `only use one model.\n` +
+        `Migrate the remaining collections so they all agree:\n\n` +
+        `  npx --package=@amemhq/core amem-migrate --from-collection ${collection}\n\n` +
+        `Or set AMEM_EMBED_MODEL to pin every collection to one model, which is only ` +
+        `correct if they really were all built with it.`
+    )
+    this.name = 'MixedEmbeddingModelsError'
   }
 }
 
@@ -270,6 +305,10 @@ const _collectionReadyMap = new Map<string, boolean>()
 export function resetCollectionReady(): void {
   _collectionReady = false
   _collectionReadyMap.clear()
+  // The pin is a commitment to the collections this process has opened. Once
+  // those are gone, so is it — otherwise one test's store decides the next one's
+  // model.
+  pinEmbeddingModel(null)
 }
 
 /**
@@ -296,11 +335,54 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
   }
 
   if (existing) {
+    const collectionDim = existing.config?.params?.vectors?.size
+    const recorded = existing.config?.metadata?.embedding_model
+    const explicit = process.env.AMEM_EMBED_MODEL?.trim()
+
+    // Settle which model this collection needs BEFORE measuring anything.
+    // Measuring loads the model, and on the path where this collection turns out
+    // to predate the current default that would mean downloading a gigabyte of
+    // weights only to conclude they are the wrong ones.
+    //
+    // Skipped entirely when AMEM_EMBED_MODEL is set: someone who set it is
+    // migrating deliberately, and quietly overriding them with the collection's
+    // own model would make the setting look broken. The checks below still catch
+    // it if they are wrong.
+    // No record, and the width of the only default this project shipped before
+    // the field existed. Nothing else could plausibly have built it: choosing a
+    // different model has always meant setting the env var, and it is unset here.
+    const inferLegacy = !explicit && recorded === undefined && collectionDim === LEGACY_DEFAULT_DIM
+
+    if (!explicit) {
+      const wanted =
+        // The collection says what built it, which outranks whatever the shipped
+        // default happens to be today. This is what keeps changing the default
+        // from breaking every install that already has data.
+        typeof recorded === 'string' ? recorded : inferLegacy ? LEGACY_DEFAULT_EMBEDDING_MODEL : DEFAULT_EMBEDDING_MODEL
+
+      const inUse = getPinnedEmbeddingModel()
+      if (inUse !== null && inUse !== wanted) throw new MixedEmbeddingModelsError(col, wanted, inUse)
+      // Pinned even when it equals the default, so the next collection through
+      // here has something to conflict with.
+      pinEmbeddingModel(wanted)
+
+      if (wanted === LEGACY_DEFAULT_EMBEDDING_MODEL) {
+        // Every startup, by design. This is a store that still works, so nothing
+        // forces the issue — but it is silently truncating and the only way the
+        // operator finds out is being told.
+        console.warn(
+          `[amem] "${col}" is on ${LEGACY_DEFAULT_EMBEDDING_MODEL} (${LEGACY_DEFAULT_DIM}-dim).\n` +
+            `[amem] ${DEFAULT_EMBEDDING_MODEL} reads 8192 tokens where that one stops at 128, so ` +
+            `anything longer is being truncated before it reaches the vector.\n` +
+            `[amem] To move: npx --package=@amemhq/core amem-migrate --from-collection ${col}`
+        )
+      }
+    }
+
     // Check the dimension NOW rather than letting the first upsert fail. Qdrant
     // rejects a wrong-width vector at insert time, which surfaces as a raw
     // storage error in the middle of a working session — long after the change
     // that caused it, and nowhere near the setting to blame.
-    const collectionDim = existing.config?.params?.vectors?.size
     if (typeof collectionDim === 'number') {
       const modelDim = await getEmbeddingDim()
       if (collectionDim !== modelDim) {
@@ -308,19 +390,24 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
       }
     }
 
-    const recorded = existing.config?.metadata?.embedding_model
     const current = getEmbeddingModel()
     if (typeof recorded === 'string' && recorded !== current) {
-      // Same width, different model. The dimension check above cannot see this,
-      // and nothing downstream would: both models produce well-formed vectors of
-      // the right size, so the store silently ends up holding two incompatible
-      // geometries and retrieval quietly degrades.
+      // Same width, different model — only reachable when AMEM_EMBED_MODEL was
+      // set, since otherwise the pin above made them equal. The dimension check
+      // cannot see this and nothing downstream would: both models produce
+      // well-formed vectors of the right size, so the store silently ends up
+      // holding two incompatible geometries and retrieval quietly degrades.
       throw new EmbeddingModelMismatchError(col, recorded, current)
     }
-    if (recorded === undefined) {
-      // Predates this field. The dimension matched, so whatever is configured now
-      // is what has been writing these vectors — record it while that is still
-      // provable. Once the default model changes, it no longer is.
+    if (recorded === undefined && !inferLegacy) {
+      // Predates the field. The dimension matched and the model was configured
+      // rather than guessed, so it is provably what wrote these vectors — record
+      // it while that is still true.
+      //
+      // Not when it was inferred: writing a guess into the metadata makes it
+      // permanent, and a store that had genuinely been on some other 384-dim
+      // model would be mislabelled with nothing left to tell from. Inference is
+      // cheap to repeat on every open; a wrong record is forever.
       await recordCollectionModel(col, current)
     }
 
@@ -339,7 +426,12 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
     // If another concurrent call already created it, that's fine
     if (!(err instanceof Error) || !err.message.includes('already exists')) throw err
   }
-  await recordCollectionModel(col, getEmbeddingModel())
+  const created = getEmbeddingModel()
+  await recordCollectionModel(col, created)
+  // Same commitment the existing-collection path makes, for the same reason: a
+  // second collection opened later must conflict rather than silently repoint
+  // this one at a different model.
+  if (!process.env.AMEM_EMBED_MODEL?.trim()) pinEmbeddingModel(created)
   // Index agent_id for fast filtering
   await qdrant('PUT', `/collections/${col}/index`, {
     field_name: 'agent_id',
