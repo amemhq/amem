@@ -73,7 +73,7 @@ amem is a monorepo you can adopt one piece at a time.
 
 ## Grounded in research
 
-openclaw-amem implements **[A-MEM: Agentic Memory](https://arxiv.org/abs/2502.12110)** (NeurIPS 2025) — memory that constructs, links, and evolves notes like a Zettelkasten instead of dumping flat vector rows. Embeddings run locally via Transformers.js (384-dim) and are stored in Qdrant. **No Python, no external embedding API.** MIT-licensed.
+openclaw-amem implements **[A-MEM: Agentic Memory](https://arxiv.org/abs/2502.12110)** (NeurIPS 2025) — memory that constructs, links, and evolves notes like a Zettelkasten instead of dumping flat vector rows. Embeddings run locally via Transformers.js and are stored in Qdrant. **No Python, no external embedding API.** MIT-licensed.
 
 <div class="tip custom-block" style="padding-top: 8px">
 

@@ -12,14 +12,21 @@ Set one with `AMEM_EMBED_MODEL`, giving the repo id of the **ONNX** export:
 AMEM_EMBED_MODEL=Xenova/bge-m3
 ```
 
-The default today is `Xenova/paraphrase-multilingual-MiniLM-L12-v2` (384-dim).
+The default is `Xenova/bge-m3` (1024-dim, 8192 tokens), which is what a store
+created from 2.0.0 onwards uses. Its ONNX is maintained by the author of
+Transformers.js itself, and it needs no query prefix — see [why it was
+picked](#why-bge-m3-is-the-default).
 
-::: warning The default has a 128-token limit
-That is a hard cap on how much of a memory reaches the vector — anything past 128
-tokens is truncated and effectively invisible to dense search. It is also absent
-from the C-MTEB leaderboard entirely; it was never built for retrieval. If your
-memories are longer than a sentence or two, this is the most consequential thing
-on this page.
+::: warning Upgrading to 2.0.0 does not move your store
+A collection built before 2.0.0 keeps `Xenova/paraphrase-multilingual-MiniLM-L12-v2`
+(384-dim), because that is what its vectors are. amem detects this and says so on
+every startup. Nothing breaks; your memories keep working exactly as they did.
+
+But that model caps at **128 tokens**, so anything longer has always been
+truncated before it reached the vector — invisible to dense search, silently. It
+is also absent from the C-MTEB leaderboard entirely; it was never a retrieval
+model. [Migrating](#changing-the-model-on-a-store-you-already-have) is the point
+of this release.
 :::
 
 ::: danger Changing this on an existing install is a breaking change
@@ -36,13 +43,41 @@ store holding vectors from two different geometries. Needs Qdrant 1.16 or newer;
 on older servers only the width check applies.
 :::
 
+## Why bge-m3 is the default
+
+Not because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
+C-MTEB and `Qwen3-Embedding-0.6B` scores 6 higher; both are in the tables below.
+bge-m3 wins on the properties that decide whether a default is safe to ship:
+
+- **8192 tokens.** The single biggest change from the old default's 128. Memories
+  longer than a couple of sentences now reach the vector whole.
+- **No prefix.** Qwen3 and e5 need `Instruct:` / `query:` prefixes that amem does
+  not send; omitting them costs 1–5% silently, which is a worse default than a
+  lower score honestly obtained.
+- **XLM-RoBERTa, with ONNX by the Transformers.js author.** Not a community export
+  that might carry a missing `Dense` head or an IR version the runtime rejects.
+- **MIT.** `Conan-embedding-v1` is CC BY-NC; Qwen3's Apache-2.0 has an
+  [open question](https://github.com/QwenLM/Qwen3-Embedding/issues/166) over its
+  training data.
+- **Chinese and English both work.** 65.29 C-MTEB dense-only retrieval and 67.8
+  MIRACL over 18 languages, which is the actual target here.
+
+The cost is size: 1.08 GB at fp16, against 118 MB for the model it replaces. If
+that matters, `onnx-community/gte-multilingual-base` is the one to reach for —
+768-dim, also 8192 tokens, no prefix, roughly a third the size, and it scores
+higher on C-MTEB.
+
 ## Changing the model on a store you already have
 
 One command, run until it says it is done:
 
 ```bash
-AMEM_EMBED_MODEL=Xenova/bge-m3 npx --package=@amemhq/core amem-migrate
+npx --package=@amemhq/core amem-migrate
 ```
+
+That migrates onto the current default. Set `AMEM_EMBED_MODEL` to go somewhere
+else, and `--from-collection` if this is not the store `AMEM_COLLECTION` names —
+per-agent collections need it.
 
 It reports where the store is and what comes next. `--apply` does the next step
 and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
@@ -209,7 +244,7 @@ amem resolves this from the model name and falls back to `mean`. Override with
 
 | Wants `cls` | Wants `mean` |
 | :--- | :--- |
-| every `bge-*`, including `bge-m3` | `paraphrase-multilingual-MiniLM-L12-v2` (the current default) |
+| every `bge-*`, including `bge-m3` (the default) | `paraphrase-multilingual-MiniLM-L12-v2` (the default before 2.0.0) |
 | every `gte-*` | every `multilingual-e5-*`, and `e5-large-v2` |
 | `snowflake-arctic-embed-m`, `snowflake-arctic-embed-l` | `Conan-embedding-v1` |
 | | `all-MiniLM-L6-v2`, `all-mpnet-base-v2` |
@@ -262,6 +297,12 @@ defaults to **`fp32`** on Node, which is the largest file a model publishes — 
 ```bash
 AMEM_EMBED_DTYPE=fp16
 ```
+
+amem overrides that default to `fp16` **for `Xenova/bge-m3` only**, halving the
+download for the model it ships. Any other model gets the library default,
+because several of the ones listed on this page — `multilingual-e5-large-instruct`,
+`Qwen3-Embedding-4B` — publish fp32 and nothing else, and forcing fp16 on them
+would fail at load for a saving that is not amem's to choose.
 
 Valid values are whatever the model publishes: `fp32`, `fp16`, `q8`, `int8`,
 `uint8`, `q4`, `q4f16`, `bnb4`. An unknown one fails at load and names the valid

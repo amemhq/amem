@@ -35,7 +35,7 @@ memory_add(text)
 memory_search(query)
       │
       ▼
- 1. Embed query (local ONNX, 384-dim)
+ 1. Embed query (local ONNX)
       │
       ├──► BM25 ranking (Jieba tokenized for CJK)
       └──► Dense vector cosine similarity

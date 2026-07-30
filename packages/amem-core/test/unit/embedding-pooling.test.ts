@@ -13,13 +13,12 @@ import { getEmbeddingPooling, DEFAULT_EMBEDDING_MODEL } from '../../src/embeddin
 afterEach(() => vi.unstubAllEnvs())
 
 describe('getEmbeddingPooling', () => {
-  it('keeps mean for the shipped default, so upgrading changes nothing', () => {
+  it('resolves cls for the shipped default — the case this fix exists for', () => {
+    // Written as a literal expectation rather than derived from the default's own
+    // lookup, which would pass for any default including one missing from the
+    // table and therefore silently pooled `mean`. If the default moves, this line
+    // is meant to be reconsidered, not to keep passing.
     vi.stubEnv('AMEM_EMBED_MODEL', DEFAULT_EMBEDDING_MODEL)
-    expect(getEmbeddingPooling()).toBe('mean')
-  })
-
-  it('resolves cls for bge-m3 — the case this fix exists for', () => {
-    vi.stubEnv('AMEM_EMBED_MODEL', 'Xenova/bge-m3')
     expect(getEmbeddingPooling()).toBe('cls')
   })
 

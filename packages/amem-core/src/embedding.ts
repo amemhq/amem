@@ -2,11 +2,11 @@
  * embedding.ts — Local ONNX embedding via @huggingface/transformers
  * Matches Python: SentenceTransformer.encode(text, normalize_embeddings=True)
  *
- * The model is selectable because the default is not a good retrieval model: it
- * caps at 128 tokens, so anything longer is truncated before it reaches the
- * vector. Changing it is a breaking change whenever the dimension differs —
- * Qdrant fixes a collection's vector size at creation — so the default stays put
- * and the switch is opt-in. See docs/reference/embedding-models.md.
+ * The model is selectable, and changing it is a breaking change whenever the
+ * dimension differs — Qdrant fixes a collection's vector size at creation. So
+ * nothing here decides on its own: a collection that already exists keeps the
+ * model it was built with (see `pinEmbeddingModel`), and moving is a deliberate
+ * `amem-migrate` run. See docs/reference/embedding-models.md.
  */
 
 // Dynamic import to avoid issues with CJS bundling
@@ -15,12 +15,69 @@ let extractor: any = null
 let loadedKey: string | null = null
 let cachedDim: number | null = null
 
-/** The model shipped since the beginning. Not changed here on purpose. */
-export const DEFAULT_EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'
+/**
+ * What a fresh install embeds with.
+ *
+ * Chosen for having no architectural question mark rather than for topping a
+ * leaderboard: XLM-RoBERTa, natively supported by Transformers.js, its ONNX
+ * maintained by that library's own author. 8192 tokens against the 128 of the
+ * model this replaced, which is the whole reason for the change — anything longer
+ * than a couple of sentences was being truncated before it reached the vector.
+ */
+export const DEFAULT_EMBEDDING_MODEL = 'Xenova/bge-m3'
 
-/** Which model this process embeds with. */
+/**
+ * The default before 2.0.0. Every store built by an earlier version holds its
+ * vectors, and nothing recorded that at the time — `LEGACY_DEFAULT_DIM` is how a
+ * collection from back then is recognised.
+ */
+export const LEGACY_DEFAULT_EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'
+export const LEGACY_DEFAULT_DIM = 384
+
+/**
+ * Weight precision for the model amem itself ships.
+ *
+ * Deliberately not a global default. Transformers.js falls back to fp32, which
+ * for bge-m3 is a 2.16 GB download against 1.08 GB at fp16 — but several models
+ * this project documents publish *only* fp32 (`multilingual-e5-large-instruct`,
+ * `Qwen3-Embedding-4B`), so forcing fp16 on whatever the user picked would fail
+ * to load on our say-so. It applies to our choice, and to nothing else.
+ */
+const DEFAULT_MODEL_DTYPE = 'fp16'
+
+/**
+ * Set when a collection says which model built it, so the engine keeps using that
+ * one instead of whatever the current default happens to be.
+ *
+ * Without this, changing `DEFAULT_EMBEDDING_MODEL` would break every existing
+ * install on upgrade. With it, the default is only ever what a *new* store gets.
+ */
+let pinnedModel: string | null = null
+
+/** Pin the model to what a collection was built with. `null` clears it. */
+export function pinEmbeddingModel(model: string | null): void {
+  if (pinnedModel === model) return
+  pinnedModel = model
+  extractor = null
+  loadedKey = null
+  cachedDim = null
+}
+
+/** What the pin currently holds, or null. The caller that set it checks for conflicts. */
+export function getPinnedEmbeddingModel(): string | null {
+  return pinnedModel
+}
+
+/**
+ * Which model this process embeds with: the env var, else whatever the open
+ * collection was built with, else the shipped default.
+ *
+ * An explicit `AMEM_EMBED_MODEL` outranks the pin on purpose — someone who set it
+ * is migrating deliberately, and silently overriding them with the collection's
+ * old model would make the setting look broken.
+ */
 export function getEmbeddingModel(): string {
-  return process.env.AMEM_EMBED_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL
+  return process.env.AMEM_EMBED_MODEL?.trim() || pinnedModel || DEFAULT_EMBEDDING_MODEL
 }
 
 /** How token embeddings are collapsed into one sentence vector. */
@@ -98,7 +155,10 @@ export function getEmbeddingDevice(): string | undefined {
  * stale the moment it gains a quantization.
  */
 export function getEmbeddingDtype(): string | undefined {
-  return process.env.AMEM_EMBED_DTYPE?.trim() || undefined
+  const explicit = process.env.AMEM_EMBED_DTYPE?.trim()
+  if (explicit) return explicit
+  // Only for the model we chose. See DEFAULT_MODEL_DTYPE.
+  return getEmbeddingModel() === DEFAULT_EMBEDDING_MODEL ? DEFAULT_MODEL_DTYPE : undefined
 }
 
 /** Everything that decides which weights are resident. */
@@ -181,8 +241,9 @@ function poolNormalize(output: number[][], attentionMask: number[], mode: Poolin
 }
 
 /**
- * Encode text to a normalized embedding vector. The width is the model's — 384
- * for the default, 1024 for bge-m3 — so nothing here should assume a number.
+ * Encode text to a normalized embedding vector. The width is the model's — 1024
+ * for the default, 384 for the one before it — so nothing here should assume a
+ * number.
  * Singleton model, loaded once and reused.
  */
 export async function encode(text: string): Promise<number[]> {

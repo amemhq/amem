@@ -17,7 +17,7 @@ Unlike a flat vector store, A-MEM maintains memory as a living, self-evolving se
 1. **Note Construction** — an LLM extracts keywords, tags, and a context summary; categorizes the note; and classifies it as `memory` (episodic) or `knowledge` (durable), extracting 1–5 `topics` for knowledge notes.
 2. **Link Generation** — retrieves top-6 candidates; the LLM judges whether to link bidirectionally (similarity > 0.3).
 3. **Memory Evolution** — up to 3 linked notes have their attributes evolved from the new context, possibly triggering further links.
-4. **Hybrid Retrieval** — fuses dense vectors (Transformers.js `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim) and BM25 via Reciprocal Rank Fusion (RRF), boosted by retrieval heat.
+4. **Hybrid Retrieval** — fuses dense vectors (Transformers.js `bge-m3`, 1024-dim) and BM25 via Reciprocal Rank Fusion (RRF), boosted by retrieval heat.
 5. **2-hop BFS Graph Expansion** — after RRF top-K, BFS walks the link graph up to 2 hops, admitting up to 8 graph-connected notes that pass an embedding relevance gate (cos-sim ≥ 0.25). This is the key advantage over flat vector systems.
 
 ## Features
@@ -47,7 +47,7 @@ host (OpenClaw plugin / amem-api / game agent)
      ▼
   @amemhq/core (TypeScript)
      ├── LLM (Anthropic)        note construction · link judgment · CRUD · evolution
-     ├── Transformers.js (ONNX) 384-dim local embeddings + Jieba BM25
+     ├── Transformers.js (ONNX) local embeddings + Jieba BM25
      └── Qdrant :6333           vector store · owner/readers/writers · agent_id isolation
 ```
 

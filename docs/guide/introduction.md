@@ -28,7 +28,7 @@ A-MEM is a memory architecture for LLM agents inspired by the **Zettelkasten met
 
 3. **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
 
-4. **Hybrid Retrieval** — Fuses vector search (local ONNX `multilingual-e5-small`, 384-dim) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
+4. **Hybrid Retrieval** — Fuses vector search (local ONNX `bge-m3`, 1024-dim) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
 
 5. **2-hop BFS Graph Expansion** — After RRF top-K selection, BFS traverses the link graph up to 2 hops, appending up to 8 contextually linked notes. Each candidate passes an embedding relevance gate (cos-sim ≥ 0.25) before admission.
 
@@ -50,7 +50,7 @@ OpenClaw Agent
                           ▼              ▼               ▼
                        Qdrant     Transformers.js  LLM (Anthropic/OpenAI)
                     (vector store)  (ONNX embed)   (CRUD decision
-                      :6333        384-dim local    + link judgment
+                      :6333        local, no Python + link judgment
                    agent_id ISO   + Jieba BM25     + evolution)
 ```
 

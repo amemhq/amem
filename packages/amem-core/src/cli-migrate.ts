@@ -34,9 +34,9 @@ Options
                             them. Makes the run completely offline.
   -h, --help
 
-The model comes from AMEM_EMBED_MODEL, so set that first:
+Migrates onto amem's current default unless AMEM_EMBED_MODEL says otherwise:
 
-  AMEM_EMBED_MODEL=Xenova/bge-m3 amem-migrate --apply
+  AMEM_EMBED_MODEL=Alibaba-NLP/gte-multilingual-base amem-migrate --apply
 
 Nothing before --switch touches the original. If a run looks wrong, delete the
 target and start again.`
@@ -77,6 +77,19 @@ export function deriveTarget(source: string): string {
   return m ? `${m[1]}_v${Number(m[2]) + 1}` : `${source}_v2`
 }
 
+/**
+ * The collection flags this run was given, so every "now run …" line it prints is
+ * copy-pasteable as-is.
+ *
+ * Without it a mode B operator who passed `--from-collection` would be told to run
+ * a bare `amem-migrate --apply`, which falls back to AMEM_COLLECTION and migrates
+ * a different store. Only the collection flags are carried: forgetting
+ * `--no-refresh-fields` costs an LLM call, forgetting these loses the plot.
+ */
+export function carried(args: MigrateArgs): string {
+  return (args.from ? ` --from-collection ${args.from}` : '') + (args.to ? ` --to-collection ${args.to}` : '')
+}
+
 type Phase =
   | { kind: 'no-source' }
   | { kind: 'already-current'; model: string }
@@ -112,6 +125,7 @@ async function main(): Promise<void> {
 
   const from = args.from ?? getCollection()
   const to = args.to ?? deriveTarget(from)
+  const flags = carried(args)
   const phase = await detect(from, to)
 
   console.log(`store:  ${from}`)
@@ -134,7 +148,7 @@ async function main(): Promise<void> {
     case 'not-started':
       if (!args.apply) {
         console.log(`\n${phase.notes} notes to rebuild into "${to}".`)
-        console.log(`Run "amem-migrate --apply" to start. "${from}" is only read.`)
+        console.log(`Run "amem-migrate${flags} --apply" to start. "${from}" is only read.`)
         return
       }
       break
@@ -142,7 +156,7 @@ async function main(): Promise<void> {
     case 'partial':
       if (!args.apply) {
         console.log(`\n${phase.done} of ${phase.notes} rebuilt into "${to}".`)
-        console.log(`Run "amem-migrate --apply" to carry on from there.`)
+        console.log(`Run "amem-migrate${flags} --apply" to carry on from there.`)
         return
       }
       break
@@ -150,7 +164,7 @@ async function main(): Promise<void> {
     case 'ready-to-switch':
       if (!args.switchOver) {
         console.log(`\nAll ${phase.notes} notes are in "${to}". "${from}" is untouched.`)
-        console.log(`Check it, then run "amem-migrate --switch" to put "${to}" behind the name "${from}".`)
+        console.log(`Check it, then run "amem-migrate${flags} --switch" to put "${to}" behind the name "${from}".`)
         console.log(`That drops "${from}" and cannot be undone.`)
         return
       }
@@ -160,7 +174,7 @@ async function main(): Promise<void> {
   }
 
   if (args.switchOver) {
-    console.error(`\nNot finished yet — run "amem-migrate --apply" until it is before switching.`)
+    console.error(`\nNot finished yet — run "amem-migrate${flags} --apply" until it is before switching.`)
     process.exitCode = 1
     return
   }
@@ -168,9 +182,9 @@ async function main(): Promise<void> {
   const result = await migrateCollection({ from, to, dryRun: false, refreshFields: args.refreshFields })
   console.log(`\n${result.migrated + result.skipped} of ${result.total} rebuilt.`)
   if (result.migrated + result.skipped >= result.total) {
-    console.log(`Check "${to}", then run "amem-migrate --switch".`)
+    console.log(`Check "${to}", then run "amem-migrate${flags} --switch".`)
   } else {
-    console.log(`Run "amem-migrate --apply" again to carry on.`)
+    console.log(`Run "amem-migrate${flags} --apply" again to carry on.`)
   }
 }
 

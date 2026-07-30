@@ -69,9 +69,11 @@ export {
   getEmbeddingDevice,
   getEmbeddingDtype,
   DEFAULT_EMBEDDING_MODEL,
+  LEGACY_DEFAULT_EMBEDDING_MODEL,
+  LEGACY_DEFAULT_DIM,
   type PoolingMode,
 } from './embedding.js'
-export { EmbeddingDimensionMismatchError, EmbeddingModelMismatchError } from './storage.js'
+export { EmbeddingDimensionMismatchError, EmbeddingModelMismatchError, MixedEmbeddingModelsError } from './storage.js'
 export { migrateCollection, switchToMigrated, type MigrateResult } from './migrate.js'
 
 // ── Story 43: cold-layer contradiction sweep ─────────────────────────────────

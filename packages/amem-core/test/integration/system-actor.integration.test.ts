@@ -23,6 +23,11 @@ vi.mock('../../src/embedding.js', () => ({
   getEmbeddingDim: async () => DIM,
   getEmbeddingModel: () => 'test/fake-encoder',
   getEmbeddingPooling: () => 'mean',
+  // This test pins getEmbeddingModel to a constant, so model resolution has
+  // nothing to resolve. Stubbed as no-ops rather than omitted: ensureCollection
+  // calls both, and a missing export is a hard mock error.
+  pinEmbeddingModel: () => {},
+  getPinnedEmbeddingModel: () => null,
 }))
 
 import { createStorageContext, type MemoryNote } from '../../src/storage.js'

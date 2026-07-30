@@ -298,9 +298,9 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |
 | `AMEM_CRUD_UPDATE_MIN_SIM` | `0.35` | Similarity floor (0–1) for accepting an LLM-chosen CRUD `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
-| `AMEM_EMBED_MODEL` | `Xenova/paraphrase-multilingual-MiniLM-L12-v2` | Which model embeds memories. Changing it is a **breaking change** whenever the vector width differs — see [Embedding models](/reference/embedding-models). |
+| `AMEM_EMBED_MODEL` | `Xenova/bge-m3` on a new store; on an existing one, whatever built it | Which model embeds memories. Setting it overrides the collection's own record, and is a **breaking change** whenever the vector width differs — see [Embedding models](/reference/embedding-models). |
 | `AMEM_EMBED_POOLING` | resolved from the model, else `mean` | How token embeddings collapse into one vector: `mean` or `cls`. BGE-, GTE- and Arctic-family models want `cls`; E5, Conan and the `all-*` models want `mean`. Only set this if you are using a model amem does not recognise — see [Pooling](/reference/embedding-models#pooling). |
-| `AMEM_EMBED_DTYPE` | library default (`fp32` on Node) | Weight precision: `fp32`, `fp16`, `q8`, `int8`, `uint8`, `q4`, `q4f16`, `bnb4` — whichever the model publishes. Decides the download: `bge-m3` is 2.16 GB at fp32 and 1.08 GB at fp16. Changing it needs **no migration**, unlike every other setting here — see [Precision](/reference/embedding-models#precision). |
+| `AMEM_EMBED_DTYPE` | `fp16` for `Xenova/bge-m3`, else the library default (`fp32` on Node) | Weight precision: `fp32`, `fp16`, `q8`, `int8`, `uint8`, `q4`, `q4f16`, `bnb4` — whichever the model publishes. Decides the download: `bge-m3` is 2.16 GB at fp32 and 1.08 GB at fp16. Changing it needs **no migration**, unlike every other setting here — see [Precision](/reference/embedding-models#precision). |
 | `AMEM_EMBED_DEVICE` | library default (`cpu` on Node) | Where inference runs: `cpu`, `coreml` (macOS), `dml` (Windows), `cuda` (Linux x64), `webgpu`. **Unmeasured** — see [Device](/reference/embedding-models#device). |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
@@ -346,9 +346,9 @@ Recommended models:
 
 The plugin auto-creates the Qdrant collection on first run with:
 
-- **Vector size**: whatever the configured model produces — 384 for the default
-  `Xenova/paraphrase-multilingual-MiniLM-L12-v2`. It is measured by encoding a probe
-  string, not looked up, so it is right for any model.
+- **Vector size**: whatever the configured model produces — 1024 for the default
+  `Xenova/bge-m3`. It is measured by encoding a probe string, not looked up, so it
+  is right for any model.
 - **Distance**: Cosine
 - **Metadata**: `embedding_model`, the model that built the collection (Qdrant 1.16+)
 - **Payload fields**: `id`, `content`, `keywords`, `tags`, `context`, `category`, `links`, `retrieval_count`, `last_accessed`, `is_active`, `agent_id`, `created_at`, `updated_at`, `owner`, `readers`, `writers`
