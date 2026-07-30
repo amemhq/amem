@@ -34,6 +34,11 @@ vi.mock('../../../amem-core/src/embedding.js', () => ({
   // validating a collection; they must agree with fakeEncode.
   getEmbeddingDim: async () => 384,
   getEmbeddingModel: () => 'test/fake-encoder',
+  // This test pins getEmbeddingModel to a constant, so model resolution has
+  // nothing to resolve. Stubbed as no-ops rather than omitted: ensureCollection
+  // calls both, and a missing export is a hard mock error.
+  pinEmbeddingModel: () => {},
+  getPinnedEmbeddingModel: () => null,
 }))
 vi.mock('../../../amem-core/src/llm.js', () => ({
   llmConstructNote: async () => ({

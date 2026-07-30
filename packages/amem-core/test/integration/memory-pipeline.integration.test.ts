@@ -40,6 +40,11 @@ vi.mock('../../src/embedding.js', () => ({
   cosineSimilarity: (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0),
   getEmbeddingDim: async () => 384,
   getEmbeddingModel: () => 'test/fake-encoder',
+  // This test pins getEmbeddingModel to a constant, so model resolution has
+  // nothing to resolve. Stubbed as no-ops rather than omitted: ensureCollection
+  // calls both, and a missing export is a hard mock error.
+  pinEmbeddingModel: () => {},
+  getPinnedEmbeddingModel: () => null,
 }))
 
 import { addMemory, searchMemory } from '../../src/memory.js'
