@@ -169,12 +169,12 @@ jobs:
 
   changeset-check:
     # Skip PRs that never carry a changeset by design: the changesets bot's
-    # own "Version Packages" PR (it consumes them), and Dependabot bumps
+    # own "Version Packages" PR (it consumes them), and dependency bumps
     # (a changeset is added by the maintainer when the bump is released).
     if: >-
       github.event_name == 'pull_request'
       && github.head_ref != 'changeset-release/main'
-      && github.actor != 'dependabot[bot]'
+      && github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

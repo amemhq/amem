@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "timezone": "Asia/Shanghai",
+  "minimumReleaseAge": "7 days",
+  "packageRules": [
+    {
+      "description": "Majors get 30 days and their own PR. A breaking upgrade reviewed on its own, never riding along with patches.",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "30 days"
+    },
+    {
+      "description": "Patches soak for 3 days — enough to clear pnpm 11's 24h minimumReleaseAge gate, which otherwise fails CI on a freshly published package.",
+      "matchUpdateTypes": ["patch"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Routine dev tooling batches into one PR. Runtime deps stay individual: what ships to users is reviewed one change at a time.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies"
+    },
+    {
+      "description": "Workflow actions in one PR.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": null,
+    "schedule": null,
+    "labels": ["security"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  }
+}
