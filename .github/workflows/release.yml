@@ -10,6 +10,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
   # OIDC token for npm trusted publishing. pnpm exchanges it with npmjs.org for
   # a short-lived publish token and attaches a sigstore provenance attestation —
   # provided a trusted publisher is configured for each package on npmjs.com
@@ -38,9 +39,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # Same PAT as the publish step: this is the credential persisted into
-          # the git remote, so it is what pushes the version tags changeset
-          # publish creates.
+          # Same PAT as the changesets step: this is the credential persisted
+          # into the git remote, so it is what pushes `changeset-release/main`
+          # and the version tags. A push made with GITHUB_TOKEN raises no events,
+          # which would leave the release PR's own checks dead.
           token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup pnpm
@@ -69,24 +71,31 @@ jobs:
           echo "::error::pnpm install failed after 3 attempts"
           exit 1
 
-      # Publishes when package.json versions are ahead of npm, and does nothing
-      # otherwise.
+      # Opens or refreshes the release PR while changesets are pending, and
+      # publishes on the push that merges it (which is what consumes them).
       #
-      # Deliberately no `version:` input. With it, the action opened a release PR
-      # on every push to main the moment any changeset existed — so unreleased
-      # work sitting on main produced a standing PR nobody asked for, and with a
-      # PAT behind it that PR carried my name. Releasing is a decision, not
-      # something that should accumulate in the PR list on its own. To cut one:
-      # `pnpm run version` on a branch, open it, merge it, and this publishes.
-      - name: Publish
+      # `version:` is not optional in practice. Without it the action still takes
+      # the same branch — its switch keys on `case hasChangesets` alone — but
+      # `runVersion` receives no script and falls back to a bare
+      # `changeset version`, which skips tools/sync-plugin-version.mjs and leaves
+      # openclaw.plugin.json behind. ClawHub reads the version out of that
+      # manifest.
+      - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
+          version: pnpm run version
           publish: pnpm run release
+          # Default is a bare "Version Packages", which reads as noise in the PR
+          # list and breaks the repo's conventional-commit history.
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
         env:
-          # A PAT, not GITHUB_TOKEN: this step pushes tags and creates GitHub
-          # Releases, and a GITHUB_TOKEN push raises no events, so nothing
-          # downstream of a release would ever fire.
+          # A PAT, not GITHUB_TOKEN, for two reasons that both bite this repo:
+          # GITHUB_TOKEN cannot open a pull request at all under an org that has
+          # not enabled "Allow GitHub Actions to create and approve pull
+          # requests"; and even where it can, the PR it opens triggers no
+          # workflows, so its checks sit at action_required forever.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # Fallback auth for when OIDC trusted publishing is unavailable. pnpm
           # prefers OIDC when it can (and only then is provenance attached), so
