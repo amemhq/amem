@@ -1,0 +1,67 @@
+name: Publish plugin to ClawHub
+
+# The recovery path the release workflow does not have.
+#
+# Release mirrors to ClawHub only when changesets has just published, because
+# that is the signal there is a new version to mirror. The consequence is that
+# the one state worth recovering from — npm published, ClawHub did not — is the
+# exact state that gate refuses to run in: there is nothing left for `changeset
+# publish` to do, so `published` comes back false and the step is skipped. That
+# happened on 2.0.0.
+#
+# Manual only, and deliberately not on push: mirroring is a decision here, not
+# something that should fire on its own.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag, branch or SHA to publish from. Defaults to main.'
+        required: false
+        default: 'main'
+
+concurrency:
+  group: clawhub-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then exit 0; fi
+            echo "::warning::pnpm install failed (attempt $attempt/3); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::pnpm install failed after 3 attempts"
+          exit 1
+
+      # The package ClawHub receives must be built from the ref being published,
+      # not assumed to exist — dist/ is gitignored.
+      - name: Build
+        run: pnpm -r build
+
+      - name: Publish plugin to ClawHub
+        uses: ./.github/actions/clawhub-publish
+        with:
+          clawhub-token: ${{ secrets.CLAWHUB_TOKEN }}
+          source-ref: ${{ inputs.ref }}
