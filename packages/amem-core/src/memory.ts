@@ -517,8 +517,32 @@ export interface SearchResult {
   keywords: string[]
   links: string[]
   timestamp: string
+  /**
+   * Cosine similarity to the query. **Not** what ordered this list — that is
+   * `rrf`, which fuses the dense and BM25 rankings and then applies a heat/recency
+   * boost. The two disagree often, and a consumer that reads `similarity` as the
+   * ranking score concludes the ranking is broken.
+   */
   similarity: number
+  /**
+   * The fused score the matches are sorted by.
+   *
+   * A link-expanded note can carry a non-zero one and still not have been ranked
+   * into the list: `bm25Score` scores every note in the store, zero-scoring ones
+   * included, so almost everything holds some fused score. It is `via`, not this,
+   * that says why a row is here.
+   */
   rrf: number
+  /**
+   * Why this note is in the results.
+   *
+   * `match` — it was retrieved for the query and ranked by `rrf`.
+   * `link` — it was **not** retrieved; it is here because it links to one that
+   * was, within two hops and above the relevance gate. These are appended in
+   * discovery order after the matches and have no `rrf` of their own, so reading
+   * the tail of the list as "lower-ranked matches" is wrong.
+   */
+  via: 'match' | 'link'
   // Story 26B
   topics: string[]
   note_type: 'memory' | 'knowledge'
@@ -600,6 +624,16 @@ export async function searchMemory(
   const visitedIds = new Set<string>(topIds)
   const bfsQueue: Array<{ id: string; hop: number }> = useBfs ? topIds.map((id) => ({ id, hop: 0 })) : []
   const bfsExtra: string[] = [] // IDs discovered via BFS, in discovery order
+  /**
+   * How close each link-expanded note is to the query.
+   *
+   * The gate below already computes this and used to drop it on the floor, which
+   * left every expanded note reporting `similarity: 0` — `embSimMap` only holds
+   * the dense top-n, and a note that made the dense top-n would have been
+   * retrieved directly rather than expanded into. So the one number a caller has
+   * for judging an expanded note was always zero, and expansion read as broken.
+   */
+  const bfsSimMap = new Map<string, number>()
 
   while (bfsQueue.length > 0 && bfsExtra.length < BFS_MAX_EXPAND) {
     const item = bfsQueue.shift()!
@@ -612,11 +646,13 @@ export async function searchMemory(
       // Only include active notes (is_active !== false)
       const linked = noteMap.get(linkedId)
       if (!linked || linked.is_active === false) continue
+      // Computed even when the gate is off, because it is also what the caller
+      // sees. An empty embedding scores 0 and is dropped by any gate above 0,
+      // which is what the previous truthiness check already did — `[]` is truthy.
+      const sim = cosineSimilarity(queryEmbedding, linked.embedding)
       // Story 22: relevance gate — skip BFS nodes too far from the query
-      if (bfsSimThreshold > 0 && linked.embedding) {
-        const sim = cosineSimilarity(queryEmbedding, linked.embedding)
-        if (sim < bfsSimThreshold) continue
-      }
+      if (bfsSimThreshold > 0 && sim < bfsSimThreshold) continue
+      bfsSimMap.set(linkedId, sim)
       bfsExtra.push(linkedId)
       bfsQueue.push({ id: linkedId, hop: item.hop + 1 })
       if (bfsExtra.length >= BFS_MAX_EXPAND) break
@@ -640,7 +676,11 @@ export async function searchMemory(
   const rrfMap = new Map(boostedMerged.map(([id, score]) => [id, score]))
 
   const results: SearchResult[] = []
-  for (const id of [...filteredTopIds, ...bfsExtra]) {
+  const ordered: Array<[string, SearchResult['via']]> = [
+    ...filteredTopIds.map((id) => [id, 'match'] as [string, SearchResult['via']]),
+    ...bfsExtra.map((id) => [id, 'link'] as [string, SearchResult['via']]),
+  ]
+  for (const [id, via] of ordered) {
     const note = noteMap.get(id)
     if (!note) continue
     results.push({
@@ -651,8 +691,9 @@ export async function searchMemory(
       keywords: note.keywords,
       links: note.links,
       timestamp: note.timestamp,
-      similarity: embSimMap.get(id) ?? 0,
+      similarity: embSimMap.get(id) ?? bfsSimMap.get(id) ?? 0,
       rrf: rrfMap.get(id) ?? 0,
+      via,
       topics: note.topics ?? [],
       note_type: note.note_type ?? 'memory',
     })
