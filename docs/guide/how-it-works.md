@@ -38,6 +38,7 @@ memory_search(query)
  1. Embed query (local ONNX)
       │
       ├──► BM25 ranking (Jieba tokenized for CJK)
+      │    only notes sharing a term with the query
       └──► Dense vector cosine similarity
       │
       ▼
@@ -51,7 +52,8 @@ memory_search(query)
       ▼
  4. 2-hop BFS expansion
     ├── Walk link graph up to 2 hops from top-K anchors
-    └── Admit only nodes with cos-sim ≥ 0.25 vs query
+    ├── Admit only nodes with cos-sim ≥ 0.25 vs query
+    └── Returned as via: "link" — appended after the matches, never ranked
       │
       ▼
  5. Return merged, deduplicated results
