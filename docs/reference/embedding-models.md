@@ -43,6 +43,26 @@ store holding vectors from two different geometries. Needs Qdrant 1.16 or newer;
 on older servers only the width check applies.
 :::
 
+::: danger Mode B: migrate every collection before you restart
+One process embeds with one model. Open two collections that need different ones
+and the second raises `MixedEmbeddingModelsError` — memory is unusable for it until
+they agree.
+
+Mode A never hits this; there is only one collection. Mode B does, and in the
+ordinary way: migrate one per-agent collection, restart, and every collection you
+have not migrated yet now disagrees with the one you have. Migrate them all in one
+sitting, then restart:
+
+```bash
+for c in amem_alice amem_bob amem_main; do
+  npx --package=@amemhq/core amem-migrate --from-collection "$c" --apply
+done
+```
+
+then `--switch` each in turn. There is no partial state that works, so do not
+restart the agent in the middle.
+:::
+
 ## Why bge-m3 is the default
 
 Not because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
@@ -78,6 +98,11 @@ npx --package=@amemhq/core amem-migrate
 That migrates onto the current default. Set `AMEM_EMBED_MODEL` to go somewhere
 else, and `--from-collection` if this is not the store `AMEM_COLLECTION` names —
 per-agent collections need it.
+
+The bare run downloads the model. It has to: the state it reports is the source's
+vector width against the target model's, and the only way to know the second is to
+load it and measure. So the first `amem-migrate` of any kind pulls 1.08 GB, even
+though it writes nothing.
 
 It reports where the store is and what comes next. `--apply` does the next step
 and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
