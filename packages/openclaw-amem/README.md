@@ -90,9 +90,10 @@ openclaw gateway restart
 ```
 
 First run downloads the embedding model (`bge-m3`, 1.08 GB) and caches it. Later
-restarts are instant. Want something smaller? `AMEM_EMBED_MODEL=onnx-community/gte-multilingual-base`
-is about a third the size and reads text just as long — set it **before** you have
-memories, since changing it afterwards means a [migration](https://amem.owo.lc/reference/embedding-models#changing-the-model-on-a-store-you-already-have).
+restarts are instant. If that is too much, the only smaller model worth setting is
+`AMEM_EMBED_MODEL=Xenova/bge-small-zh-v1.5` — 25 MB, Chinese only, and it caps at
+512 tokens. Set it **before** you have memories, since changing it afterwards means
+a [migration](https://amem.owo.lc/reference/embedding-models#changing-the-model-on-a-store-you-already-have).
 
 Upgrading from 1.x downloads nothing. Your existing memories keep the model that
 built them, and the plugin says so at startup along with the one command that

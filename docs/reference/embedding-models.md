@@ -66,8 +66,9 @@ restart the agent in the middle.
 ## Why bge-m3 is the default
 
 Not because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
-C-MTEB and `Qwen3-Embedding-0.6B` scores 6 higher; both are in the tables below.
-bge-m3 wins on the properties that decide whether a default is safe to ship:
+C-MTEB and `Qwen3-Embedding-0.6B` scores 6 higher. Neither is a row you can act on:
+Conan turned out to be [unusable](#not-usable-today) and Qwen3 loads through a
+fallback. bge-m3 wins on the properties that decide whether a default is safe:
 
 - **8192 tokens.** The single biggest change from the old default's 128. Memories
   longer than a couple of sentences now reach the vector whole.
@@ -76,16 +77,36 @@ bge-m3 wins on the properties that decide whether a default is safe to ship:
   lower score honestly obtained.
 - **XLM-RoBERTa, with ONNX by the Transformers.js author.** Not a community export
   that might carry a missing `Dense` head or an IR version the runtime rejects.
-- **MIT.** `Conan-embedding-v1` is CC BY-NC; Qwen3's Apache-2.0 has an
+- **MIT, and the export is the whole model.** Conan is CC BY-NC *and* its ONNX
+  drops a `Dense(1024 → 1792)` head, so the score it is famous for is not a score
+  you can get here. Qwen3's Apache-2.0 has an
   [open question](https://github.com/QwenLM/Qwen3-Embedding/issues/166) over its
   training data.
 - **Chinese and English both work.** 65.29 C-MTEB dense-only retrieval and 67.8
   MIRACL over 18 languages, which is the actual target here.
 
-The cost is size: 1.08 GB at fp16, against 118 MB for the model it replaces. If
-that matters, `onnx-community/gte-multilingual-base` is the one to reach for —
-768-dim, also 8192 tokens, no prefix, roughly a third the size, and it scores
-higher on C-MTEB.
+The cost is size: 1.08 GB at fp16, against 118 MB for the model it replaces.
+
+`onnx-community/gte-multilingual-base` is the real alternative, and it is not the
+smaller one it was described as here. Both builds were loaded and checked:
+
+- **fp32 works.** 768 dims, unit norm, and a near-synonym Chinese pair at 0.86
+  against 0.44 for an unrelated Chinese/English pair. 1.26 GB — *more* than bge-m3
+  costs, because amem's fp16 default covers its own model only.
+- **fp16 does not load.** onnxruntime 1.24.3 aborts in `SimplifiedLayerNormFusion`
+  on a node the fp16 conversion inserts. That was the only build smaller than
+  bge-m3, so the size argument for gte is gone.
+
+It scores about 4.4 higher on C-MTEB. Against that: its architecture is `new`,
+which Transformers.js has no mapping for, so it runs through a generic fallback
+the library itself logs as unsupported, and working today is not working after an
+upgrade. See [what a fallback model risks](#what-a-fallback-model-risks) for what
+that actually costs — less than it sounds, but not nothing. The *default* stays on
+the natively-mapped model because a default should not ask that question of
+someone who never opened this page.
+
+If size is the binding constraint and Chinese is all you need,
+`Xenova/bge-small-zh-v1.5` is 25 MB and native, at 61.77 and a 512-token window.
 
 ## Changing the model on a store you already have
 
@@ -134,20 +155,39 @@ Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
 - **not published** means exactly that. Nothing here is estimated or inferred.
 - Sizes are the real ONNX file sizes listed on HuggingFace, per dtype.
 
+### The `Runtime` column
+
+An ONNX export existing is not the same as the model working, and the difference
+is invisible from the repo listing. Two things are checked for every model here,
+without downloading weights, by `node tools/audit-embedding-models.mjs`:
+
+| `Runtime` | Meaning |
+| :--- | :--- |
+| **native** | Transformers.js maps the architecture, and there is no `Dense` module for the export to drop. |
+| **fallback** | No mapping for the architecture. It still loads, through a generic encoder path that Transformers.js logs as unsupported. Nobody here has confirmed the vectors are right. |
+
+A model with a `Dense` module is not given a row at all — it is in [Not usable
+today](#not-usable-today), because the export leaves the projection behind and you
+get a representation that was never benchmarked. `Conan-embedding-v1` and `LaBSE`
+were both in these tables until the audit was written.
+
+**native does not mean measured.** It means nothing structural is wrong. Only
+`bge-m3` has actually been loaded and had its output checked, because it is the
+default and every test exercises it.
+
 ## Chinese and English both matter
 
-| Model (ONNX repo) | zh | en | multi | Dim | Max seq | Params | Licence | Prefix |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- | :--- |
-| `Xenova/bge-m3` | 65.29¹ | not published | **67.8** MIRACL² | 1024 | 8192 | 568M | MIT | none |
-| `onnx-community/gte-multilingual-base` | ~69.7³ | not published | not published | 768 | 8192 | 305M | Apache-2.0 | none |
-| `onnx-community/Qwen3-Embedding-0.6B-ONNX` | 71.03 | not published | not published | 1024 | 32768 | 0.6B | Apache-2.0⁴ | **required** |
-| `intfloat/multilingual-e5-large-instruct` | 63.65 | 53.47 | 65.7 MIRACL | 1024 | 512 | 560M | MIT | **required** |
-| `ibm-granite/granite-embedding-311m-multilingual-r2` | not published | 52.6 | 65.2 MTEB-multi | 768 | 32768 | 311M | Apache-2.0⁵ | none |
-| `ibm-granite/granite-embedding-97m-multilingual-r2` | not published | 50.1 | 60.3 MTEB-multi | 384 | 32768 | 97M | Apache-2.0⁵ | none |
-| `onnx-community/harrier-oss-v1-0.6b-ONNX` | not published | not published | 69.0 MTEB-multiᵃ | 1024 | 32768 | 0.6B | MIT | **required** |
-| `onnx-community/harrier-oss-v1-270m-ONNX` | not published | not published | 66.5 MTEB-multiᵃ | 640 | 32768 | 270M | MIT | **required** |
-| `onnx-community/embeddinggemma-300m-ONNX` | not published | 69.67ᵃ | 60.9 MTEB-multi | 768 | 2048 | 300M | Gemma⁶ | none |
-| `Xenova/LaBSE` | not published | not published | not published | 768 | 512 | 470M | Apache-2.0 | none |
+| Model (ONNX repo) | Runtime | zh | en | multi | Dim | Max seq | Params | Licence | Prefix |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- | :--- |
+| `Xenova/bge-m3` | native | 65.29¹ | not published | **67.8** MIRACL² | 1024 | 8192 | 568M | MIT | none |
+| `onnx-community/gte-multilingual-base` | **fallback** | ~69.7³ | not published | not published | 768 | 8192 | 305M | Apache-2.0 | none |
+| `onnx-community/Qwen3-Embedding-0.6B-ONNX` | **fallback** | 71.03 | not published | not published | 1024 | 32768 | 0.6B | Apache-2.0⁴ | **required** |
+| `intfloat/multilingual-e5-large-instruct` | native | 63.65 | 53.47 | 65.7 MIRACL | 1024 | 512 | 560M | MIT | **required** |
+| `ibm-granite/granite-embedding-311m-multilingual-r2` | native | not published | 52.6 | 65.2 MTEB-multi | 768 | 32768 | 311M | Apache-2.0⁵ | none |
+| `ibm-granite/granite-embedding-97m-multilingual-r2` | native | not published | 50.1 | 60.3 MTEB-multi | 384 | 32768 | 97M | Apache-2.0⁵ | none |
+| `onnx-community/harrier-oss-v1-0.6b-ONNX` | **fallback** | not published | not published | 69.0 MTEB-multiᵃ | 1024 | 32768 | 0.6B | MIT | **required** |
+| `onnx-community/harrier-oss-v1-270m-ONNX` | **fallback** | not published | not published | 66.5 MTEB-multiᵃ | 640 | 32768 | 270M | MIT | **required** |
+| `onnx-community/embeddinggemma-300m-ONNX` | **fallback** | not published | 69.67ᵃ | 60.9 MTEB-multi | 768 | 2048 | 300M | Gemma⁶ | none |
 
 **MIRACL and MTEB-multi are different benchmarks** and their numbers are not
 comparable with each other. Only the two MIRACL figures — bge-m3's 67.8 and
@@ -172,17 +212,18 @@ with the retrieval numbers in the other columns.
 
 Higher Chinese scores, at the cost of English retrieval.
 
-| Model (ONNX repo) | zh | Dim | Max seq | Params | Licence | Prefix |
-| :--- | ---: | ---: | ---: | ---: | :--- | :--- |
-| `onnx-community/Conan-embedding-v1` | **76.67** | 1024 | 512 | 335M | **CC BY-NC 4.0** | none |
-| `Xenova/bge-base-zh-v1.5` | 69.49 | 768 | 512 | 102M | MIT | optional |
-| `Xenova/bge-small-zh-v1.5` | 61.77 | 512 | 512 | 24M | MIT | optional |
+| Model (ONNX repo) | Runtime | zh | Dim | Max seq | Params | Licence | Prefix |
+| :--- | :--- | ---: | ---: | ---: | ---: | :--- | :--- |
+| `Xenova/bge-base-zh-v1.5` | native | 69.49 | 768 | 512 | 102M | MIT | optional |
+| `Xenova/bge-small-zh-v1.5` | native | 61.77 | 512 | 512 | 24M | MIT | optional |
 
-`Conan-embedding-v1` is the highest Chinese retrieval score on this page and its
-ONNX was uploaded by the Transformers.js author, which is about as good a
-compatibility signal as exists. It is **non-commercial only** — fine for personal
-use, not something to build a product on. Its 512-token window is still four times
-the current default's.
+`Conan-embedding-v1` used to have a row here, on the strength of the highest
+Chinese retrieval score on the page and an ONNX conversion that loads without
+complaint. Both are true and neither makes it usable: `modules.json` upstream ends
+in `Dense(1024 → 1792)`, the conversion covers the backbone only, and 76.67 was
+measured on the 1792-dim output. Through Transformers.js you get 1024 dims, amem
+measures 1024, builds the collection at 1024, and never has cause to complain.
+It is in [Not usable today](#not-usable-today). Separately, it is CC BY-NC.
 
 ::: warning Conan-embedding-v2 is better in every way except the one that matters
 v2 is Apache-2.0 (v1 is not), scores **78.31** on C-MTEB retrieval and **66.40** on
@@ -192,8 +233,8 @@ takes 32768 tokens.
 It has **no ONNX export**: not in `TencentBAC/Conan-embedding-v2`, and no
 `onnx-community` or `Xenova` conversion exists. Its architecture is a custom
 `ConanEmbedModel` built on a from-scratch 1.4B LLM, so even an export would need
-Transformers.js to add support for it. The usable Conan is v1; the good Conan is
-v2.
+Transformers.js to add support for it. Neither Conan is usable here — v1 for the
+Dense head, v2 for having no export at all.
 :::
 
 ## English-focused
@@ -202,17 +243,17 @@ Chinese is unpublished for all of these because the backbones are English-only;
 expect Chinese retrieval to be poor. `all-MiniLM-L6-v2` scores **3.61** on
 MTEB(cmn) retrieval, which is the shape of the whole band.
 
-| Model (ONNX repo) | en | Dim | Max seq | Params | Licence | Prefix |
-| :--- | ---: | ---: | ---: | ---: | :--- | :--- |
-| `Alibaba-NLP/gte-large-en-v1.5` | **57.91** | 1024 | 8192 | 434M | Apache-2.0 | none |
-| `Snowflake/snowflake-arctic-embed-l` | 55.98 | 1024 | 512 | 335M | Apache-2.0 | **required** |
-| `Alibaba-NLP/gte-modernbert-base` | 55.33 | 768 | 8192 | 149M | Apache-2.0 | none |
-| `Xenova/e5-large-v2` | 55.26 | 1024 | 512 | 335M | MIT | **required** |
-| `Snowflake/snowflake-arctic-embed-m` | 54.90 | 768 | 512 | 110M | Apache-2.0 | **required** |
-| `Xenova/bge-large-en-v1.5` | 54.29 | 1024 | 512 | 335M | MIT | **required** |
-| `Xenova/bge-base-en-v1.5` | 53.25 | 768 | 512 | 110M | MIT | **required** |
-| `nomic-ai/nomic-embed-text-v1.5` | 58.81ᵇ | 768 | 8192 | 137M | Apache-2.0 | **required** |
-| `Xenova/all-mpnet-base-v2` | 43.81 | 768 | 384 | 110M | Apache-2.0 | none |
+| Model (ONNX repo) | Runtime | en | Dim | Max seq | Params | Licence | Prefix |
+| :--- | :--- | ---: | ---: | ---: | ---: | :--- | :--- |
+| `Alibaba-NLP/gte-large-en-v1.5` | **fallback** | **57.91** | 1024 | 8192 | 434M | Apache-2.0 | none |
+| `Snowflake/snowflake-arctic-embed-l` | native | 55.98 | 1024 | 512 | 335M | Apache-2.0 | **required** |
+| `Alibaba-NLP/gte-modernbert-base` | native | 55.33 | 768 | 8192 | 149M | Apache-2.0 | none |
+| `Xenova/e5-large-v2` | native | 55.26 | 1024 | 512 | 335M | MIT | **required** |
+| `Snowflake/snowflake-arctic-embed-m` | native | 54.90 | 768 | 512 | 110M | Apache-2.0 | **required** |
+| `Xenova/bge-large-en-v1.5` | native | 54.29 | 1024 | 512 | 335M | MIT | **required** |
+| `Xenova/bge-base-en-v1.5` | native | 53.25 | 768 | 512 | 110M | MIT | **required** |
+| `nomic-ai/nomic-embed-text-v1.5` | native | 58.81ᵇ | 768 | 8192 | 137M | Apache-2.0 | **required** |
+| `Xenova/all-mpnet-base-v2` | native | 43.81 | 768 | 384 | 110M | Apache-2.0 | none |
 
 ᵇ BEIR average rather than the MTEB 15-task retrieval set the others use.
 
@@ -241,12 +282,11 @@ Worth listing because some people have the machine for it — but see
 for the largest models are fp32-only**, which is what actually rules them out
 rather than the parameter count.
 
-| Model (ONNX repo) | zh | en | Smallest ONNX | RAM needed | Licence |
-| :--- | ---: | ---: | ---: | ---: | :--- |
-| `onnx-community/Qwen3-Embedding-8B-ONNX` | **78.21** | 69.44 | fp32 **30.3 GB** | ~36 GB+ | Apache-2.0³ |
-| `onnx-community/Qwen3-Embedding-4B-ONNX` | **77.03** | 68.46 | fp32 **16.1 GB** | ~22 GB+ | Apache-2.0³ |
-| `Xenova/LaBSE` | not published | not published | int8 471 MB | ~1 GB | Apache-2.0 |
-| `Alibaba-NLP/gte-large-en-v1.5` | not published | 57.91 | int8 446 MB | ~1 GB | Apache-2.0 |
+| Model (ONNX repo) | Runtime | zh | en | Smallest ONNX | RAM needed | Licence |
+| :--- | :--- | ---: | ---: | ---: | ---: | :--- |
+| `onnx-community/Qwen3-Embedding-8B-ONNX` | **fallback** | **78.21** | 69.44 | fp32 **30.3 GB** | ~36 GB+ | Apache-2.0³ |
+| `onnx-community/Qwen3-Embedding-4B-ONNX` | **fallback** | **77.03** | 68.46 | fp32 **16.1 GB** | ~22 GB+ | Apache-2.0³ |
+| `Alibaba-NLP/gte-large-en-v1.5` | **fallback** | not published | 57.91 | int8 446 MB | ~1 GB | Apache-2.0 |
 
 ::: warning Qwen3-Embedding-4B and 8B do not fit a normal machine
 Both publish **only an fp32 ONNX**. There is no fp16, q8 or q4 variant, so the
@@ -365,8 +405,10 @@ turn on.
 
 Almost everything at the top of C-MTEB and MTEB is out of reach, and **it is the
 runtime that puts it there, not the models**. The top of both leaderboards is
-1.5B–8B models published as SafeTensors only. The best Chinese model that actually
-loads here is `Conan-embedding-v1`, which is non-commercial.
+1.5B–8B models published as SafeTensors only. `Conan-embedding-v1` looks like the
+exception — it has an ONNX and it loads — but the export is backbone-only and the
+score belongs to the projection it leaves behind, so it is in the table below with
+everything else.
 
 These are listed rather than dropped, with the specific blocker and what would
 lift it, because **most of the blockers are properties of our runtime choice, not
@@ -389,6 +431,8 @@ NDCG@10, one leaderboard snapshot each — so they are comparable *within* a col
 | `Alibaba-NLP/gte-Qwen2-7B-instruct` | 75.70 | 58.09 | SafeTensors 30.5 GB, 7.6B | No ONNX ([request open since Jan 2025](https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct/discussions/49)); too large for a consumer machine at fp32 | A quantized export — needs both a format we can load and ~8 GB of RAM |
 | `richinfoai/ritrieve_zh_v1` | 76.97 | not published | SafeTensors, **MIT**, 0.3B | No ONNX; ends in a `2_Dense` module so a backbone-only export is not enough | A *full-pipeline* export including the Dense head. The best value on this table — MIT and small |
 | `lier007/xiaobu-embedding-v2` | 76.50 | not published | SafeTensors + partial ONNX, **no licence declared** | `onnx/model.onnx` is backbone-only; `modules.json` declares Dense(1024→1792) | A full-pipeline export **and** a declared licence |
+| `onnx-community/Conan-embedding-v1` | **76.67** | not published | SafeTensors + ONNX, **CC BY-NC 4.0** | Conversion is backbone-only; upstream `modules.json` ends in Dense(1024→1792), so the score belongs to vectors this cannot produce. Loads and reports 1024 dims without error | A full-pipeline export. The licence would still rule it out for anything commercial |
+| `Xenova/LaBSE` | not published | not published | SafeTensors + ONNX, Apache-2.0 | Upstream `modules.json` ends in Dense(768→768). Same width in and out, so dropping it changes the vectors and nothing anywhere can notice | A full-pipeline export |
 | `BAAI/bge-multilingual-gemma2` | 73.73 | 59.24 | SafeTensors 37 GB, 9B | No ONNX; too large | A quantized export |
 | `Alibaba-NLP/gte-Qwen2-1.5B-instruct` | 71.86 | 50.25 | SafeTensors, 1.5B | No ONNX | Any loadable export |
 | `intfloat/e5-mistral-7b-instruct` | 61.75 | 57.62 | SafeTensors, 7B | No ONNX for feature extraction; too large | A quantized export |
@@ -419,6 +463,43 @@ Current `@huggingface/transformers` bundles onnxruntime-node 1.24.3, which suppo
 IR 10. Nothing on this page is excluded on IR grounds any more.
 :::
 
+## What a fallback model risks
+
+Nine models on this page load through a path Transformers.js has no mapping for.
+It works — `gte-multilingual-base` at fp32 returns 768 unit-norm dims with a
+Chinese near-synonym pair at 0.86 against 0.44 for an unrelated one — but the
+library logs it as unsupported and nothing promises the next version still does it.
+
+**What breaks if that happens.** The plugin cannot open the store: every path goes
+through `ensureCollection`, which measures the model's width, which means loading
+it. You get `memory is UNUSABLE` at startup and no reads or writes until it is
+resolved.
+
+**What does not break: your memories.** `amem-migrate` never loads the model that
+built the source. It reads the collection through the raw helpers that deliberately
+bypass `ensureCollection`, throws the stored vectors away, and re-embeds from the
+payload text — content, keywords, tags and context are all still there. The only
+model it needs to load is the one you are moving *to*.
+
+So the recovery is:
+
+```bash
+AMEM_EMBED_MODEL=Xenova/bge-m3 npx --package=@amemhq/core amem-migrate --apply
+# then --switch
+```
+
+Downtime and a rebuild, not data loss. Weigh a fallback model against that, not
+against losing the store — but do weigh it, because the rebuild is the whole store
+and the outage lasts until you finish.
+
+Two things reduce the exposure if you take one:
+
+- **Pin `@huggingface/transformers`.** The plugin bundles its own copy, so the
+  version that works stays working until you update the plugin.
+- **Keep the payload complete.** The rebuild is only as good as the text in the
+  store. `--no-refresh-fields` on the original migration leaves early notes with
+  empty keywords and tags, and those are what a future rebuild has to work from.
+
 ## Known runtime caveats
 
 - **`gte-multilingual-base`** declares `model_type: "new"` / `NewModel`, which
@@ -434,13 +515,23 @@ IR 10. Nothing on this page is excluded on IR grounds any more.
   AVX2-specific quantization may misbehave on ARM; prefer fp32 on Apple Silicon.
 - **`onnx-community/bge-m3-ONNX`** ships a 2-byte, broken `model_fp16.onnx`. Use
   `Xenova/bge-m3` instead.
-- **Check `modules.json` before trusting any ONNX.** Sentence-Transformers models
-  can end in a `Dense` projection after pooling, and a stock Optimum export covers
-  the transformer backbone only. Transformers.js does its own pooling but has no
-  notion of a Dense head, so a model whose `modules.json` lists three modules will
-  silently produce vectors of the wrong width and the wrong content. Two modules —
-  Transformer and Pooling — is what you want. This is what rules out
-  `xiaobu-embedding-v2`, and it fails quietly rather than loudly.
+- **Check `modules.json` for a `Dense` module before trusting any ONNX.**
+  Sentence-Transformers models can end in a learned projection after pooling, and a
+  stock Optimum export covers the transformer backbone only. Transformers.js does
+  its own pooling but has no notion of a Dense head, so you silently get the
+  pre-projection vectors — a representation nobody benchmarked.
+
+  Read the module *types*, not the count. `Transformer, Pooling, Normalize` is
+  three modules and is fine: `Normalize` is plain L2, which amem does itself.
+  `bge-m3` and `gte-multilingual-base` are both that shape. `Transformer, Pooling,
+  Dense` is the one to refuse.
+
+  This is what rules out `xiaobu-embedding-v2` and `Conan-embedding-v1`. Conan is
+  the clearest case: its `2_Dense/config.json` projects 1024 → 1792, so the real
+  model emits 1792-dim vectors and its 76.67 C-MTEB score was measured on those.
+  Through Transformers.js you get 1024 dims, amem measures 1024, builds the
+  collection at 1024, and everything runs. Nothing tells you the model you are
+  running is not the model you read about.
 
 ## Dimension barely matters at this scale
 
