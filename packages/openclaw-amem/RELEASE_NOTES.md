@@ -26,10 +26,9 @@ only read until the very last step, so there is nothing to undo if a run looks
 wrong.
 
 **A fresh install downloads 1.08 GB** for the new model, once, then caches it. If
-that is more than you want, set
-`AMEM_EMBED_MODEL=onnx-community/gte-multilingual-base` before you store anything
-— about a third of the size, same 8192-token limit. Changing it later means
-migrating.
+that is more than you want, `AMEM_EMBED_MODEL=Xenova/bge-small-zh-v1.5` is 25 MB —
+Chinese only, and it stops at 512 tokens. Set it before you store anything;
+changing it later means migrating.
 
 **Search results say where they came from.** A result that is in the list because
 it links to a match is now marked, instead of looking like a weak match. The
