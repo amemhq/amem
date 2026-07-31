@@ -265,11 +265,24 @@ function register(api: {
                   details: { count: 0 },
                 }
               }
+              // Labelled "similarity", not "score". It is the cosine distance to
+              // the query and it did NOT order this list — matches are ranked by
+              // the fused BM25+dense score, and the linked ones are not ranked at
+              // all. Calling it "score" invited exactly the reading that the
+              // ranking was broken because the percentages are not monotonic.
+              const linked = results.filter((r) => r.via === 'link').length
               const text = results
-                .map((r, i) => `${i + 1}. ${r.content} (score: ${(r.similarity * 100).toFixed(0)}%, id: ${r.id})`)
+                .map(
+                  (r, i) =>
+                    `${i + 1}. ${r.content} (similarity ${(r.similarity * 100).toFixed(0)}%` +
+                    `${r.via === 'link' ? ', linked — did not match the query itself' : ''}, id: ${r.id})`
+                )
                 .join('\n')
+              const header = linked
+                ? `Found ${results.length - linked} matching memories, plus ${linked} linked to them:`
+                : `Found ${results.length} memories:`
               return {
-                content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}${hookWarning}` }],
+                content: [{ type: 'text', text: `${header}\n\n${text}${hookWarning}` }],
                 details: { count: results.length, memories: results },
               }
             } catch (err) {
