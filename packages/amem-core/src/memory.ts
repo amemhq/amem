@@ -525,12 +525,8 @@ export interface SearchResult {
    */
   similarity: number
   /**
-   * The fused score the matches are sorted by.
-   *
-   * A link-expanded note can carry a non-zero one and still not have been ranked
-   * into the list: `bm25Score` scores every note in the store, zero-scoring ones
-   * included, so almost everything holds some fused score. It is `via`, not this,
-   * that says why a row is here.
+   * The fused score the matches are sorted by, and 0 for anything no retriever
+   * ranked. It is `via`, not this, that says why a row is here.
    */
   rrf: number
   /**
@@ -588,7 +584,26 @@ export async function searchMemory(
   const allNotes = await ctx.listNotes(agentId, subject)
   const bm25State = buildBM25(allNotes)
   const queryTokens = simpleTokenize(query)
-  const bm25Ranked = bm25Score(bm25State, queryTokens).slice(0, n)
+  // Only notes the query actually hits.
+  //
+  // `bm25Score` is a scorer, not a retriever: it returns every note in the store,
+  // and the ones that share no term with the query score exactly 0 and sort among
+  // themselves in scroll order. Slicing that without filtering handed RRF up to
+  // `n` notes chosen by nothing at all, at the same rank weights as the dense
+  // hits — measured on a 50-note store with a query that hit no term, the first
+  // zero-scoring note and the top dense result both came out at 0.0163934. Scroll
+  // order is stable, so it was the same notes polluting every such query rather
+  // than noise that averages out.
+  //
+  // `> 0` is exactly "contains a query term" here: the idf is the `+ 1` variant,
+  // which stays positive even for a term present in every note, so a real match
+  // can never be filtered out by this.
+  //
+  // With nothing left, RRF degenerates to the dense ranking, which is the correct
+  // answer for a query with no lexical hits.
+  const bm25Ranked = bm25Score(bm25State, queryTokens)
+    .filter(([, score]) => score > 0)
+    .slice(0, n)
 
   // RRF fusion with retrieval_count heat boost (Story 13-A)
   const merged = rrfMerge(

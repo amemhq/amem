@@ -126,13 +126,14 @@ describe('link-expanded results', () => {
     expect(res.slice(firstLink).every((r) => r.via === 'link')).toBe(true)
   })
 
-  it('can carry an rrf it was never ranked in on', async () => {
-    // Surprising and worth pinning: bm25Score returns every note in the store,
-    // zero-scoring ones included, so almost everything ends up with some fused
-    // score. `neighbour` holds one and still had to be reached by link. That is
-    // why `rrf` cannot answer "why is this row here" and `via` has to.
+  it('carries no rrf when nothing ranked it', async () => {
+    // `neighbour` shares no term with the query and is not in the dense results,
+    // so neither retriever contributes it and it reaches the list only along the
+    // link. It used to hold a fused score anyway — bm25Score returns every note
+    // in the store, zero-scoring ones included, and that slice went straight into
+    // the fusion. Filtering those out is what makes 0 mean "nothing ranked this".
     const res = await searchMemory('alpha', TOP_K, 'main', { storageCtx: makeCtx([HIT, NEIGHBOUR], [HIT]) })
-    expect(res.find((r) => r.id === 'neighbour')?.rrf).toBeGreaterThan(0)
+    expect(res.find((r) => r.id === 'neighbour')?.rrf).toBe(0)
     expect(res.find((r) => r.id === 'hit')?.rrf).toBeGreaterThan(0)
   })
 
@@ -162,5 +163,44 @@ describe('link-expanded results', () => {
       useBfs: false,
     })
     expect(res.map((r) => r.via)).toEqual(['match'])
+  })
+})
+
+/**
+ * What BM25 contributes when the query hits nothing.
+ *
+ * `bm25Score` scores every note in the store and returns them all; the ones that
+ * share no term with the query come out at exactly 0 and sort among themselves in
+ * whatever order the store handed them over. Taking the first `n` of that put
+ * notes chosen by nothing into the fusion at the same rank weights as real dense
+ * hits, and stably — the same notes on every such query, so it biased rather than
+ * averaged out.
+ */
+describe('lexical misses', () => {
+  const A = note('a', [1, 0], [], 'alpha')
+  const B = note('b', [0.9, 0.1], [], 'beta')
+  const C = note('c', [0.8, 0.2], [], 'gamma')
+
+  it('contributes nothing when no note shares a term with the query', async () => {
+    // Dense returns only `a`. Nothing matches "zeta", so the fusion has one
+    // input and must return one note. `b` and `c` used to ride in on rank 1 and 2
+    // of a table of zeroes.
+    const res = await searchMemory('zeta', 5, 'main', { storageCtx: makeCtx([A, B, C], [A]) })
+    expect(res.map((r) => r.id)).toEqual(['a'])
+  })
+
+  it('leaves the dense ranking alone rather than reshuffling it', async () => {
+    // Both retrievers empty of lexical signal → the result is the dense order,
+    // which is the right answer for a query with no terms in the store.
+    const res = await searchMemory('zeta', 5, 'main', { storageCtx: makeCtx([A, B, C], [C, A, B]) })
+    expect(res.map((r) => r.id)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('still fuses the notes that do match', async () => {
+    // The half that works must keep working: `b` matches lexically and is absent
+    // from the dense results, and it has to come back.
+    const res = await searchMemory('beta', 5, 'main', { storageCtx: makeCtx([A, B, C], [A]) })
+    expect(res.map((r) => r.id).sort()).toEqual(['a', 'b'])
+    expect(res.find((r) => r.id === 'b')?.via).toBe('match')
   })
 })
