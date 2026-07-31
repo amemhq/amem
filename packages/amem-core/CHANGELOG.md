@@ -1,5 +1,173 @@
 # @amemhq/core
 
+## 2.0.0
+
+### Major Changes
+
+- [#115](https://github.com/amemhq/amem/pull/115) [`1177e5d`](https://github.com/amemhq/amem/commit/1177e5d3c4e19e86ac4c8c592e9983da3fcb14bf) Thanks [@heichaowo](https://github.com/heichaowo)! - Stop feeding notes the query never hit into the ranking.
+
+  `bm25Score` is a scorer, not a retriever: it returns every note in the store, and
+  the ones sharing no term with the query come back at exactly 0, sorted among
+  themselves in the order the store handed them over. `searchMemory` sliced the
+  first `n` of that straight into the RRF fusion, so up to `n` notes selected by
+  nothing at all competed with the dense results at the same rank weights.
+
+  Measured on a 50-note store with a query that hit no term: BM25 returned all 50,
+  none scoring above 0, and the first of them entered the fusion at 0.0163934 —
+  identical to the weight of the top dense hit. Scroll order is stable, so it was
+  the same notes on every such query. That is a systematic bias, not noise that
+  averages away.
+
+  Filtering to `score > 0` is exact rather than a heuristic here: the idf is the
+  `+ 1` variant, which stays positive even for a term present in every note, so a
+  real lexical match can never fall through it. When nothing matches, RRF now
+  degenerates to the dense ranking, which is the right answer for a query with no
+  lexical signal.
+
+  This also makes `rrf: 0` mean what it says. Until now nearly every note carried a
+  fused score whether or not any retriever had chosen it.
+
+- [#112](https://github.com/amemhq/amem/pull/112) [`4a26a02`](https://github.com/amemhq/amem/commit/4a26a02cbbb913903849cf867293e9c1cad4b640) Thanks [@heichaowo](https://github.com/heichaowo)! - Default to `Xenova/bge-m3`. Existing stores keep the model they were built with.
+
+  The old default caps at 128 tokens. Anything longer never reached the vector, so
+  every memory past a couple of sentences was being retrieved on its opening clause
+  — quietly, because a truncated encode returns a perfectly well-formed vector.
+  bge-m3 reads 8192, needs no query prefix, is MIT, and its ONNX is maintained by
+  the author of Transformers.js. `Conan-embedding-v1` scores 11 points higher on
+  C-MTEB and is CC BY-NC; Qwen3-Embedding scores higher and needs an `Instruct:`
+  prefix amem does not send. Neither is a default I want to ship.
+
+  Nothing moves on upgrade. A collection is opened with the model recorded in its
+  Qdrant metadata, and a store predating that field is inferred from its vector
+  width — 384 could only have come from the old default, since picking anything else
+  has always meant setting `AMEM_EMBED_MODEL`. The inference is repeated on every
+  open rather than written back: a wrong record is permanent, and re-deriving it
+  costs nothing. So the new default only ever applies to a store that does not exist
+  yet, and moving an existing one is `amem-migrate` and nothing else.
+
+  `AMEM_EMBED_MODEL` still wins over both, because someone who set it is migrating
+  on purpose.
+
+  **Breaking** in two places. A new store is 1024-dim instead of 384. And two
+  collections open in one process that need different models is now
+  `MixedEmbeddingModelsError` rather than a dimension error from whichever one lost
+  — reachable in mode B, mid-migration, when one per-agent collection has moved and
+  the others have not.
+
+  Also here:
+
+  - `AMEM_EMBED_DTYPE` defaults to `fp16` **for bge-m3 only** — 1.08 GB instead of
+    2.16 GB. Not global: `multilingual-e5-large-instruct` and `Qwen3-Embedding-4B`
+    publish fp32 and nothing else, and failing their load to save someone a
+    gigabyte they did not ask about is not amem's call.
+  - The mismatch errors were telling people to run `amem-migrate --to <name>`, which
+    is not a flag. It parses `--to-collection`, so the argument was silently
+    dropped; the derived target made it work anyway, and the missing
+    `--from-collection` would have migrated the wrong store in mode B. Both errors
+    now print the flag that exists, and the CLI repeats the collection flags it was
+    given into every "now run this" line it prints.
+
+- [#104](https://github.com/amemhq/amem/pull/104) [`a3c2ecf`](https://github.com/amemhq/amem/commit/a3c2ecf150aab272d881cf32b69d327544169cdb) Thanks [@heichaowo](https://github.com/heichaowo)! - Require an identity on `getNote`, `updateNoteContent` and `invalidateNote`.
+
+  All three took an _optional_ caller id, and omitting it skipped the authorization
+  check entirely. That put the safe behaviour behind remembering to ask for it, and
+  made "no check here" invisible — an absent argument reads exactly like an
+  oversight. A ClawHub scan flagged the shape; tracing it found no reachable path
+  where an outside note id met an identity-less call, so it was a design weakness
+  rather than a vulnerability. It is also the wrong foundation to keep building on.
+
+  The id is now required. `SYSTEM_ACTOR` is what a call passes when it genuinely
+  acts as the engine rather than on behalf of an agent — two places, both the fetch
+  that `updateNoteContent` and `invalidateNote` perform in order to evaluate the
+  write policy, where gating the read on the policy it exists to check would be
+  circular. Every other call site already had a real agent id in scope and now
+  passes it.
+
+  **Breaking** for anyone calling these from `@amemhq/core` directly. The fix is to
+  pass the identity you already have, or `SYSTEM_ACTOR` if you genuinely have none —
+  and having to write that down is the point.
+
+  One behaviour change falls out of this. The optional identity was carrying two
+  meanings: "check authorization" and "this is a caller-scoped write, snapshot the
+  replaced text into `evolution_history`". The dedup and merge paths passed nothing
+  and so did neither. Now they pass a real identity, so they snapshot too — which is
+  the better default: folding a near-duplicate and merging two notes both destroy
+  text that had recovery value. It costs one point read on paths that were already
+  making an LLM call.
+
+  Also stops `amem-api` from ever exposing by-id access without deciding to. No
+  route calls these functions today, but that was an accident of what had been
+  built; a test now records it.
+
+- [#114](https://github.com/amemhq/amem/pull/114) [`37b9a42`](https://github.com/amemhq/amem/commit/37b9a42ffe8162972ed8a15ebb2d88542a723190) Thanks [@heichaowo](https://github.com/heichaowo)! - Say why each search result is in the list, and stop reporting link-expanded notes
+  as 0% similar.
+
+  Two-hop link expansion has worked since Story 18 and looked broken from outside.
+  `similarity` was read out of a map built from the dense top-n, and an expanded
+  note is by definition not in it — if it were, it would have been retrieved
+  directly instead of expanded into. So every expanded note reported `0`, the plugin
+  rendered `score: 0%`, and an agent running against a real store concluded
+  expansion was not happening. The gate at the top of the walk had already computed
+  the real cosine in order to threshold on it, and threw it away.
+
+  The number was also mislabelled. It is a cosine similarity; the list is ordered by
+  the RRF fusion of dense and BM25 with a heat/recency boost. Those disagree
+  routinely, so a column that looks like it should decrease down the list does not,
+  and there is no threshold to set on it because it is not what ranked anything.
+
+  `SearchResult` gains `via: 'match' | 'link'`. Matches are the ranked slice; links
+  are appended after them in discovery order and were never ranked at all. Without
+  that distinction the tail of the list reads as low-scoring matches, which is the
+  opposite of what it is — those are notes the graph vouched for.
+
+  Note `rrf` is not zero for a link: `bm25Score` returns every note in the store,
+  zero-scoring ones included, so nearly everything carries some fused score. That is
+  exactly why `rrf` cannot answer "why is this row here" and `via` has to.
+
+  The plugin now labels the column `similarity`, marks linked rows, and counts the
+  two kinds separately in the header.
+
+  **Breaking** only for direct `@amemhq/core` consumers that construct a
+  `SearchResult` themselves; the field is additive for anyone reading one.
+
+### Minor Changes
+
+- [#107](https://github.com/amemhq/amem/pull/107) [`8b593c7`](https://github.com/amemhq/amem/commit/8b593c7fbfa5836415aaf9de38b56dcc4f2a9fb7) Thanks [@heichaowo](https://github.com/heichaowo)! - Rework `amem-migrate` into one command that works out its own next step, and make
+  a migration resumable.
+
+  The CLI had `--apply` and `--finalize` — two verbs wearing one command name, with
+  the destructive one reachable by adding a flag to a read-only invocation. It now
+  detects which phase the store is in and does the next safe thing: bare reports,
+  `--apply` advances, `--switch` performs the one irreversible step. The target
+  collection name is derived (`amem_notes` → `amem_notes_v2`) rather than asked for.
+
+  `migrateCollection` resumes. Ids survive the rebuild, so anything already in the
+  target is a point this migration wrote — that makes an interrupted run
+  distinguishable from somebody else's data, and finishing one costs only the notes
+  that were missed. A target holding anything the source does not is still refused.
+
+  `switchToMigrated` is new: it verifies the target holds at least as much as the
+  source, drops the source, and puts an alias in its place. That alias is the point
+  — after the first migration nobody has to change any configuration again, because
+  the name readers use stops being tied to a particular collection.
+
+  The CLI is written for someone who arrived from an error message rather than for
+  someone embedding the engine. Anyone using `@amemhq/core` directly gets both
+  functions exported and can sequence them however they like.
+
+### Patch Changes
+
+- [#105](https://github.com/amemhq/amem/pull/105) [`e47eadf`](https://github.com/amemhq/amem/commit/e47eadf3a1837fa4a349a7bf0c30b767eadb7c65) Thanks [@heichaowo](https://github.com/heichaowo)! - Pin that a Qdrant alias serves the underlying collection's config.
+
+  No behaviour change — a test only. amem reads both of its embedding guards out of
+  `GET /collections/{name}`: the vector width and the recorded model. Qdrant
+  documents that _queries_ work identically through an alias and says nothing about
+  that endpoint, and if either field came back empty through one, both guards would
+  stop guarding silently rather than fail. Establishing it before building the
+  alias-based migration on top, and keeping the test so it stays true.
+
+- [#109](https://github.com/amemhq/amem/pull/109) [`824ba09`](https://github.com/amemhq/amem/commit/824ba09c0270cc3463d03c3adbbdbaaf16fa5a6b) Thanks [@heichaowo](https://github.com/heichaowo)! - No code change — swap Dependabot for Renovate.
+
 ## 1.1.0
 
 ### Minor Changes
