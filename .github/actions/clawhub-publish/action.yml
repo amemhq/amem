@@ -1,0 +1,78 @@
+name: Publish plugin to ClawHub
+description: Mirror the built openclaw-amem package to ClawHub, retrying transient service failures.
+
+# Shared by the release workflow and the manual one so the publish exists once.
+# The pinned CLI version, the release-note extraction and the source attribution
+# all have to match between an automatic mirror and a recovery mirror, and
+# "remember to change both" is not a mechanism.
+
+inputs:
+  clawhub-token:
+    description: ClawHub publish token.
+    required: true
+  source-ref:
+    description: Ref recorded as the source of this publish. Defaults to the running ref.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Publish to ClawHub
+      shell: bash
+      working-directory: packages/openclaw-amem
+      env:
+        CLAWHUB_TOKEN: ${{ inputs.clawhub-token }}
+        SOURCE_REF: ${{ inputs.source-ref }}
+      run: |
+        set -euo pipefail
+
+        # Pin the CLI: an unpinned global install lets a broken clawhub release
+        # fail this *after* npm has already published, leaving the two registries
+        # on different versions. 0.23.1 is what OpenClaw pins for its own plugin
+        # publishes.
+        npm i -g clawhub@0.23.1
+        clawhub login --token "$CLAWHUB_TOKEN"
+
+        pnpm pack --pack-destination "$RUNNER_TEMP"
+        rm -rf "$RUNNER_TEMP/clawhub-pkg" && mkdir -p "$RUNNER_TEMP/clawhub-pkg"
+        tar -xzf "$RUNNER_TEMP"/openclaw-amem-*.tgz -C "$RUNNER_TEMP/clawhub-pkg"
+
+        # ClawHub's listing is read by people deciding whether to install a
+        # plugin. CHANGELOG.md is generated from changesets and written for
+        # whoever works on the engine. RELEASE_NOTES.md is the same release said
+        # plainly. Falls back rather than failing: npm has already published by
+        # the time this runs, so a missing note must not block the mirror.
+        VERSION=$(node -p "require('./package.json').version")
+        NOTE=$(awk -v hdr="## $VERSION" '$0 == hdr {f=1; next} f && /^## / {exit} f' RELEASE_NOTES.md)
+        if [ -z "$NOTE" ]; then
+          echo "::warning::RELEASE_NOTES.md has no '## $VERSION' section; falling back to the generated CHANGELOG, which is written for engine developers rather than plugin users."
+          NOTE=$(awk '/^## /{n++} n==1{print} n==2{exit}' CHANGELOG.md)
+        fi
+
+        SHA=$(git rev-parse HEAD)
+        REF="${SOURCE_REF:-$GITHUB_REF_NAME}"
+
+        # Retry: the failure that motivated this was entirely inside ClawHub —
+        # its Plugin Inspector could not mkdir a sandbox home and returned
+        # "blocked publish: 1 breakage" with a stated reset window of under a
+        # minute. Nothing about the package was wrong, and npm was already
+        # published, so the whole release was left half-mirrored by something
+        # that would have passed a minute later.
+        for attempt in 1 2 3; do
+          if clawhub --no-input package publish "$RUNNER_TEMP/clawhub-pkg/package" \
+            --family code-plugin --owner amemhq \
+            --source-repo "$GITHUB_REPOSITORY" \
+            --source-commit "$SHA" \
+            --source-ref "$REF" \
+            --source-path packages/openclaw-amem \
+            --changelog "$NOTE"; then
+            echo "published openclaw-amem@$VERSION to ClawHub"
+            exit 0
+          fi
+          echo "::warning::clawhub publish failed (attempt $attempt/3); retrying in $((attempt * 30))s"
+          sleep $((attempt * 30))
+        done
+
+        echo "::error::clawhub publish failed after 3 attempts. npm already holds $VERSION, so re-running Release will NOT retry this — its ClawHub step is gated on changesets having just published. Run the 'Publish plugin to ClawHub' workflow manually once the service recovers."
+        exit 1

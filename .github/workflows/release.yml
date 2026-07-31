@@ -110,41 +110,13 @@ jobs:
       # just published to npm, so the two registries stay on the exact same
       # version. Runs only when changesets actually published openclaw-amem —
       # skipped on the pushes that release nothing, which is most of them.
+      #
+      # That gate is also why the publish lives in a shared action: it cannot run
+      # a second time for a version npm already has, so recovering from a
+      # ClawHub-only failure needs the manual clawhub-publish workflow, and both
+      # paths have to mirror identically.
       - name: Publish plugin to ClawHub
         if: steps.changesets.outputs.published == 'true' && contains(steps.changesets.outputs.publishedPackages, 'openclaw-amem')
-        working-directory: packages/openclaw-amem
-        run: |
-          # Pin the CLI: an unpinned global install lets a broken clawhub
-          # release fail this step *after* npm has already published, leaving
-          # the two registries on different versions. 0.23.1 is the version
-          # OpenClaw itself pins for its own plugin publishes.
-          npm i -g clawhub@0.23.1
-          clawhub login --token "$CLAWHUB_TOKEN"
-          pnpm pack --pack-destination "$RUNNER_TEMP"
-          rm -rf "$RUNNER_TEMP/clawhub-pkg" && mkdir -p "$RUNNER_TEMP/clawhub-pkg"
-          tar -xzf "$RUNNER_TEMP"/openclaw-amem-*.tgz -C "$RUNNER_TEMP/clawhub-pkg"
-          # ClawHub's listing is read by people deciding whether to install a
-          # plugin. CHANGELOG.md is generated from changesets and written for
-          # whoever works on the engine — 2.0.0's entry runs to 150 lines about
-          # BM25 scorers and vector geometry, which is the right text for npm and
-          # the wrong text here. RELEASE_NOTES.md is the same release said plainly.
-          #
-          # Falls back rather than failing: a release must never be blocked by a
-          # missing note, and npm has already published by the time this step
-          # runs. The warning is so a fallback is not silent.
-          VERSION=$(node -p "require('./package.json').version")
-          NOTE=$(awk -v hdr="## $VERSION" '$0 == hdr {f=1; next} f && /^## / {exit} f' RELEASE_NOTES.md)
-          if [ -z "$NOTE" ]; then
-            echo "::warning::RELEASE_NOTES.md has no '## $VERSION' section; falling back to the generated CHANGELOG, which is written for engine developers rather than plugin users."
-            NOTE=$(awk '/^## /{n++} n==1{print} n==2{exit}' CHANGELOG.md)
-          fi
-          # Code plugins require source attribution; use the exact release commit.
-          clawhub --no-input package publish "$RUNNER_TEMP/clawhub-pkg/package" \
-            --family code-plugin --owner amemhq \
-            --source-repo "$GITHUB_REPOSITORY" \
-            --source-commit "$GITHUB_SHA" \
-            --source-ref "$GITHUB_REF_NAME" \
-            --source-path packages/openclaw-amem \
-            --changelog "$NOTE"
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        uses: ./.github/actions/clawhub-publish
+        with:
+          clawhub-token: ${{ secrets.CLAWHUB_TOKEN }}

@@ -4,7 +4,9 @@ What a release means if you use the plugin. This is what ClawHub shows on the
 listing. [CHANGELOG.md](./CHANGELOG.md) is the same releases described at the
 engine level, generated from changesets, and stays that way for npm.
 
-## 2.0.0
+## 2.0.1
+
+The jump from 1.4.3, since 2.0.0 was published to npm but never reached ClawHub.
 
 **Memories longer than a sentence or two are searchable now.** The embedding model
 the plugin shipped with reads only the first 128 tokens of a note — around 60
@@ -38,3 +40,6 @@ number that orders the list.
 store, the keyword half of search was still contributing notes, chosen by nothing
 at all, weighted the same as real matches. It now contributes nothing, and the
 results come from meaning alone.
+
+**One manifest field removed.** It duplicated what `package.json` already
+declares, and ClawHub's validator flags it. No effect on how the plugin runs.
