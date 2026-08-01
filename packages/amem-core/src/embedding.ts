@@ -155,6 +155,55 @@ export function getEmbeddingDtype(): string | undefined {
   return process.env.AMEM_EMBED_DTYPE?.trim() || undefined
 }
 
+/**
+ * Where model weights are cached, and where to look for ones already on disk.
+ *
+ * Transformers.js caches into its own install directory and reads no environment
+ * variable for it. That is per-copy-of-the-library, so the plugin's copy and any
+ * `npx --package=@amemhq/core` invocation each download the same 2.27 GB
+ * separately, and every fresh `npx` temp directory downloads it again. Migrating
+ * a store meant downloading the model a second time for no reason.
+ *
+ * `AMEM_MODEL_CACHE` gives every copy one place to share.
+ *
+ * `AMEM_MODEL_DIR` is the other half: point it at a directory holding the repo
+ * layout (`<dir>/Xenova/bge-m3/onnx/model.onnx`, …) and the model is read from
+ * there. Downloading 2.27 GB over a slow link, on a machine that cannot reach
+ * HuggingFace, or onto several machines from one copy are all the same problem,
+ * and the fix is being allowed to put the file there yourself.
+ */
+function applyModelPaths(env: { cacheDir: string | null; localModelPath: string; allowLocalModels: boolean }): void {
+  const cache = process.env.AMEM_MODEL_CACHE?.trim()
+  if (cache) env.cacheDir = cache
+  const local = process.env.AMEM_MODEL_DIR?.trim()
+  if (local) {
+    env.localModelPath = local
+    env.allowLocalModels = true
+  }
+}
+
+/**
+ * Report a download rather than going silent for the length of one.
+ *
+ * The default model is 2.27 GB. On a slow link that is over an hour with no
+ * output at all, which reads as a hang — and a migration that looks hung is one
+ * somebody interrupts. Only fires while bytes are moving; a cached model prints
+ * nothing.
+ */
+function makeProgressReporter(): (e: { status?: string; file?: string; progress?: number; total?: number }) => void {
+  const lastPct = new Map<string, number>()
+  return (e) => {
+    if (e.status !== 'progress' || !e.file || typeof e.progress !== 'number') return
+    // Only the weights are worth reporting; configs and tokenizers are KBs.
+    if (!e.file.endsWith('.onnx') && !e.file.endsWith('.onnx_data')) return
+    const pct = Math.floor(e.progress / 10) * 10
+    if (lastPct.get(e.file) === pct) return
+    lastPct.set(e.file, pct)
+    const size = e.total ? ` of ${(e.total / 1e9).toFixed(2)} GB` : ''
+    console.log(`[amem] downloading ${e.file}: ${pct}%${size}`)
+  }
+}
+
 /** Everything that decides which weights are resident. */
 function extractorKey(): string {
   return `${getEmbeddingModel()}|${getEmbeddingDevice() ?? ''}|${getEmbeddingDtype() ?? ''}`
@@ -169,11 +218,15 @@ async function getExtractor() {
   if (!pipeline) {
     const mod = await import('@huggingface/transformers')
     pipeline = mod.pipeline
+    // Set once, on the same import that yields the pipeline: `env` is module
+    // state, so re-applying it per call would be noise.
+    applyModelPaths(mod.env)
   }
   const device = getEmbeddingDevice()
   const dtype = getEmbeddingDtype()
   extractor = await pipeline('feature-extraction', getEmbeddingModel(), {
     revision: 'main',
+    progress_callback: makeProgressReporter(),
     // Omitted entirely when unset, so an unconfigured install gets exactly the
     // library defaults it got before these existed.
     ...(device ? { device } : {}),

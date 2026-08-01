@@ -126,6 +126,27 @@ vector width against the target model's, and the only way to know the second is 
 load it and measure. So the first `amem-migrate` of any kind pulls the whole model,
 2.27 GB for the default, even though it writes nothing.
 
+### How long it takes
+
+Three different bottlenecks, worth separating because only one of them scales with
+your store:
+
+| Phase | Bound by | Measured |
+| :--- | :--- | :--- |
+| Model download | your bandwidth, once | 2.27 GB for the default. One run here took 75 minutes on a slow link; on 10 MB/s it is about 4 minutes |
+| Rebuild | CPU, linear in note count | ~3.4 notes/second on an M4 — 2112 notes in about 10 minutes |
+| Re-extraction | your LLM's latency | one call per note that has no keywords or tags |
+
+The download is the part that looks like a hang, and it is the part you can do
+with the agent still running.
+
+### Stop the agent before `--apply`, not before this
+
+Nothing before `--apply` writes, so the long download costs you no downtime if you
+leave the agent up through it. Writing underneath a running agent is not dangerous
+— `--switch` refuses while the source has more notes than the target — but every
+memory written during the rebuild means another `--apply` round to catch up.
+
 It reports where the store is and what comes next. `--apply` does the next step
 and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
 died two thousand notes in does not start over. `--switch` is the last step: it
@@ -165,16 +186,31 @@ without downloading weights, by `node tools/audit-embedding-models.mjs`:
 | `Runtime` | Meaning |
 | :--- | :--- |
 | **native** | Transformers.js maps the architecture, and there is no `Dense` module for the export to drop. |
-| **fallback** | No mapping for the architecture. It still loads, through a generic encoder path that Transformers.js logs as unsupported. Nobody here has confirmed the vectors are right. |
+| **fallback** | No mapping for the architecture. It still loads, through a generic encoder path that Transformers.js logs as unsupported. |
 
 A model with a `Dense` module is not given a row at all — it is in [Not usable
 today](#not-usable-today), because the export leaves the projection behind and you
 get a representation that was never benchmarked. `Conan-embedding-v1` and `LaBSE`
 were both in these tables until the audit was written.
 
-**native does not mean measured.** It means nothing structural is wrong. Only
-`bge-m3` has actually been loaded and had its output checked, because it is the
-default and every test exercises it.
+### What has actually been run
+
+`Runtime` is a structural check, not a measurement — it is what a script can tell
+without downloading anything. Loading is a separate question, and it is answered
+per **model *and* dtype**, because they fail independently: `bge-m3` is fine at
+fp32 and does not load at all at fp16.
+
+| | Meaning | Which |
+| :--- | :--- | :--- |
+| **in use** | Loaded, and running a real store | `Xenova/bge-m3` at fp32 — 2112 notes, macOS arm64 |
+| **loaded** | Loaded, sane vectors, no real store behind it | `onnx-community/gte-multilingual-base` at fp32 |
+| **broken** | Loading fails, with the error recorded | **any model at `fp16`** — see [Precision](#precision) |
+| *(nothing)* | Never loaded by anyone here | everything else |
+
+Everything else in these tables has been checked on paper and on metadata, and
+that is all. That is not a reason to avoid them — it is a reason to load one and
+look before you migrate a store onto it, and to
+[tell us](https://github.com/amemhq/amem/issues) what you find.
 
 ## Chinese and English both matter
 

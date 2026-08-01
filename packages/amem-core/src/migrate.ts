@@ -21,6 +21,7 @@ import {
   collectionDimRaw,
   scrollIdsRaw,
   deleteCollectionRaw,
+  snapshotCollectionRaw,
   resolveAliasRaw,
   setAliasRaw,
   createAliasRaw,
@@ -213,13 +214,24 @@ export async function switchToMigrated(opts: {
   name: string
   /** The collection built by `migrateCollection`. */
   to: string
+  /**
+   * Snapshot the source before dropping it. Default true.
+   *
+   * Freeing the name means deleting the collection, but it does not have to mean
+   * losing the data, and those should not be the same decision. The snapshot is
+   * what makes "switch over" reversible and leaves "throw the old vectors away"
+   * as a separate thing to do later, by hand, once the new store has proven
+   * itself in use.
+   */
+  snapshot?: boolean
   logger?: { info: (m: string) => void; warn: (m: string) => void }
-}): Promise<{ name: string; to: string; moved: number }> {
+}): Promise<{ name: string; to: string; moved: number; snapshot?: { name: string; size: number } }> {
   const { name, to } = opts
   const log = opts.logger?.info ?? ((m: string) => console.log(m))
 
   if (name === to) throw new Error(`switch: "${name}" and "${to}" are the same collection`)
 
+  let snap: { name: string; size: number } | undefined
   const already = await resolveAliasRaw(name)
   if (already === to) {
     log(`[switch] "${name}" already points at "${to}" — nothing to do`)
@@ -239,6 +251,10 @@ export async function switchToMigrated(opts: {
       )
     }
     log(`[switch] verified ${targetCount} in "${to}" against ${sourceCount} in "${name}"`)
+    if (opts.snapshot !== false) {
+      snap = await snapshotCollectionRaw(name)
+      log(`[switch] snapshotted "${name}" → ${snap.name} (${(snap.size / 1e6).toFixed(0)} MB)`)
+    }
     await deleteCollectionRaw(name)
     log(`[switch] dropped "${name}"`)
     // create, not set: setAliasRaw deletes first, and there is no alias to
@@ -251,5 +267,5 @@ export async function switchToMigrated(opts: {
   }
 
   log(`[switch] "${name}" now resolves to "${to}"`)
-  return { name, to, moved: targetCount }
+  return { name, to, moved: targetCount, snapshot: snap }
 }

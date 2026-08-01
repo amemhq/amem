@@ -35,6 +35,8 @@
           "AMEM_EMBED_POOLING",
           "AMEM_EMBED_DEVICE",
           "AMEM_EMBED_DTYPE",
+          "AMEM_MODEL_CACHE",
+          "AMEM_MODEL_DIR",
           "AMEM_COLLECTION",
           "AMEM_DATA_DIR",
           "AMEM_EVO_COUNTER_PATH",
