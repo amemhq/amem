@@ -54,6 +54,16 @@ describe('parseArgs', () => {
     expect(parseArgs(['--help']).help).toBe(true)
     expect(parseArgs(['--apply']).help).toBe(false)
   })
+
+  it('takes a bare `help` too', () => {
+    // Without this, the spelling most people try first falls through to a normal
+    // run and starts a multi-gigabyte model download instead of printing usage.
+    expect(parseArgs(['help']).help).toBe(true)
+  })
+
+  it('only as the first word, so a collection named help is not a help request', () => {
+    expect(parseArgs(['--from-collection', 'help']).help).toBe(false)
+  })
 })
 
 describe('deriveTarget', () => {

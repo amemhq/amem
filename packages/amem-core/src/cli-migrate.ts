@@ -34,9 +34,23 @@ Options
                             them. Makes the run completely offline.
   -h, --help
 
+  AMEM_MODEL_CACHE=<dir>    where model weights are cached. Set the same value
+                            everywhere and the plugin and this command share one
+                            copy instead of downloading it each.
+  AMEM_MODEL_DIR=<dir>      read weights already on disk instead of downloading.
+
 Migrates onto amem's current default unless AMEM_EMBED_MODEL says otherwise:
 
   AMEM_EMBED_MODEL=Alibaba-NLP/gte-multilingual-base amem-migrate --apply
+
+Stop your agent before --apply, not before this. The bare run only downloads and
+reports, and the download is the long part — leaving the agent up through it costs
+nothing, while writing underneath a running agent means notes arrive after the
+rebuild has read them and you have to run --apply again.
+
+Roughly: the download is your bandwidth (2.27 GB for the default), the rebuild is
+your CPU (about 3 notes a second on an M4), and notes missing keywords cost one
+LLM call each.
 
 Nothing before --switch touches the original. If a run looks wrong, delete the
 target and start again.`
@@ -56,7 +70,9 @@ export function parseArgs(argv: string[]): MigrateArgs {
     return i === -1 ? undefined : argv[i + 1]
   }
   return {
-    help: argv.includes('-h') || argv.includes('--help'),
+    // `help` as a bare word too. Without it, typing what most CLIs accept starts
+    // a multi-gigabyte model download instead of printing anything.
+    help: argv.includes('-h') || argv.includes('--help') || argv[0] === 'help',
     apply: argv.includes('--apply'),
     switchOver: argv.includes('--switch'),
     from: value('--from-collection'),
@@ -168,8 +184,17 @@ async function main(): Promise<void> {
         console.log(`That drops "${from}" and cannot be undone.`)
         return
       }
-      await switchToMigrated({ name: from, to })
-      console.log(`\nDone. Nothing to change in your config — "${from}" now resolves to "${to}".`)
+      {
+        const res = await switchToMigrated({ name: from, to })
+        console.log(`\nDone. Nothing to change in your config — "${from}" now resolves to "${to}".`)
+        if (res.snapshot) {
+          console.log(`\nThe old store is kept as a snapshot, ${(res.snapshot.size / 1e6).toFixed(0)} MB:`)
+          console.log(`  <qdrant storage>/snapshots/${from}/${res.snapshot.name}`)
+          // Not a curl: once "${from}" is an alias, the snapshot API resolves it
+          // to the new collection and reports none. The file is the only handle.
+          console.log(`Delete that file once the new store has proven itself. Nothing else will.`)
+        }
+      }
       return
   }
 

@@ -548,6 +548,28 @@ export async function deleteCollectionRaw(collection: string): Promise<void> {
   await qdrant('DELETE', `/collections/${collection}`)
 }
 
+/**
+ * Snapshot a collection, and return where Qdrant put it.
+ *
+ * The migration has to delete the source to free its name for the alias — Qdrant
+ * cannot alias over a name a real collection holds. Deleting the *collection* is
+ * unavoidable; deleting the *data* is not, and those are two different decisions.
+ * This makes them two decisions.
+ *
+ * The path is worth returning rather than the name alone: once the collection is
+ * gone, `GET /collections/{name}/snapshots` no longer finds it — the name now
+ * resolves through the alias to the new collection, which has none. The file is
+ * still on disk under the old collection's directory, and the only way anyone
+ * finds it again is being told where it is.
+ */
+export async function snapshotCollectionRaw(collection: string): Promise<{ name: string; size: number }> {
+  const r = (await qdrant('POST', `/collections/${collection}/snapshots`)) as {
+    name: string
+    size?: number
+  }
+  return { name: r.name, size: r.size ?? 0 }
+}
+
 /** Which collection an alias points at, or null if the name is not an alias. */
 export async function resolveAliasRaw(alias: string): Promise<string | null> {
   try {
