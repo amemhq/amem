@@ -28,6 +28,28 @@ pnpm --filter openclaw-amem build
 openclaw plugins install --link ./packages/openclaw-amem
 ```
 
+### Updating
+
+```bash
+openclaw plugins update openclaw-amem
+openclaw gateway restart
+```
+
+Two things worth knowing before you run it.
+
+**It rebuilds `node_modules`, which is where the model cache lives by default** —
+so an update re-downloads 2.27 GB unless you have set `AMEM_MODEL_CACHE` to a path
+outside the plugin directory. Set it once and updates stop costing a download:
+
+```bash
+AMEM_MODEL_CACHE=~/.openclaw/model-cache
+```
+
+**Check whether you still need any workaround you added.** `AMEM_EMBED_DTYPE=fp32`
+was needed on 2.0.0 and 2.0.1, whose default could not load; from 2.1.0 the default
+is correct and that variable can go. A stale override is not harmless — it pins you
+to a choice the release has moved past.
+
 ---
 
 ## Configure `openclaw.json`

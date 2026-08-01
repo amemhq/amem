@@ -57,6 +57,17 @@ pnpm --filter openclaw-amem build
 openclaw plugins install --link ./packages/openclaw-amem
 ```
 
+Updating:
+
+```bash
+openclaw plugins update openclaw-amem
+openclaw gateway restart
+```
+
+An update rebuilds `node_modules`, and the model cache lives there by default — so
+it re-downloads 2.27 GB unless `AMEM_MODEL_CACHE` points somewhere outside the
+plugin directory. Set that once and updates cost nothing.
+
 ### 2. Configure `~/.openclaw/openclaw.json`
 
 Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
