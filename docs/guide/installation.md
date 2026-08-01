@@ -34,10 +34,7 @@ openclaw plugins install --link ./packages/openclaw-amem
 openclaw plugins update openclaw-amem
 ```
 
-OpenClaw prints "Restart the gateway to load plugins and hooks" when it finishes.
-Whether it needs you to depends on your setup — a no-op update leaves the gateway
-process untouched, so if search still works afterwards it picked the new build up
-on its own. If it does not:
+The gateway does not pick the new build up on its own — restart it:
 
 ```bash
 openclaw gateway restart
@@ -119,7 +116,7 @@ If you were previously using `memory-core`, you can safely remove or disable it 
 
 > **Required:** `hooks.allowConversationAccess: true` must be set explicitly. Without it, the `agent_end` hook is blocked by OpenClaw's security policy and **automatic memory write-back will not work** — memories will only be written when you call `memory_add` manually.
 
-> If `allowConversationAccess` is not set, the plugin will log a warning after 10 minutes of startup and append a notice to every `memory_search` result indicating that write-back is disabled (Story 34).
+> If `allowConversationAccess` is not set, the plugin logs a warning at startup and appends a notice to every `memory_search` result saying write-back is disabled. It is decided once, by reading the config, rather than by waiting to see whether the hook ever fires.
 
 ---
 

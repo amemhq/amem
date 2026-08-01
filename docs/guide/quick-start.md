@@ -36,7 +36,7 @@ Returns the total active note count for the current agent namespace.
 memory_consolidate()
 ```
 
-Triggers same-day semantic deduplication (cosine ≥ 0.80) grouped by category, with automatic link cascading.
+Merges semantic duplicates (cosine ≥ 0.75) across the whole store, grouped by category, with link cascading. Knowledge notes are skipped.
 
 ---
 
@@ -45,7 +45,7 @@ Triggers same-day semantic deduplication (cosine ≥ 0.80) grouped by category, 
 The plugin schedules **daily consolidation** automatically at **02:30 AM** (in-process `setTimeout`). It:
 
 - Groups notes by `category`
-- Merges semantic duplicates (cosine ≥ 0.75) into unified knowledge notes
+- Merges semantic duplicates (cosine ≥ 0.75) into one note, keeping the episodic type
 - Cascades all link references to preserve graph topology
 
 No configuration required.
@@ -56,7 +56,7 @@ No configuration required.
 
 At agent conversation end (`agent_end` hook), the plugin:
 
-1. Analyses the full user-assistant dialogue
+1. Reads the **last** user message and the **last** assistant message, each truncated to 500 characters — not the whole conversation
 2. Decides `NEW` / `UPDATE` / `DELETE` / `NONE` per note
 3. Executes changes automatically
 

@@ -63,8 +63,7 @@ Updating:
 openclaw plugins update openclaw-amem
 ```
 
-OpenClaw asks you to restart the gateway afterwards; whether it is actually needed
-depends on your setup, so check whether search works before running
+The gateway does not load the new build until it restarts, so follow it with
 `openclaw gateway restart`.
 
 An update rebuilds `node_modules`, and the model cache lives there by default — so

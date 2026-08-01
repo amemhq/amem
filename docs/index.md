@@ -25,10 +25,10 @@ features:
     details: Inspired by Zettelkasten. Memories are stored as nodes in a graph with automatic bidirectional link generation and LLM-verified connections — not flat vector rows.
   - icon: 🧬
     title: Memory Evolution & Consolidation
-    details: Linked memories evolve context, tags, and embeddings when new details arrive. Same-day semantic duplicates (≥ 0.80 similarity) are auto-merged, and daily consolidation at 02:30 keeps the graph clean.
+    details: Linked memories evolve context, tags, and embeddings when new details arrive. A near-identical write (≥ 0.85) folds into the note it matches instead of becoming a second one; 0.72–0.85 is stored but flagged for review. Daily consolidation at 02:30 merges the rest.
   - icon: 🚦
     title: LLM CRUD Gate & Quality Controls
-    details: Hooked into agent_end to run NEW / UPDATE / DELETE / NONE decisions on every conversation. A write-time quality gate rejects low-quality content; memory_quality_scan surfaces stale or conflicting entries.
+    details: Hooked into agent_end to run NEW / UPDATE / DELETE / NONE decisions after a turn that succeeded. A write-time quality gate rejects low-quality content; memory_quality_scan surfaces stale or conflicting entries.
   - icon: 🔍
     title: Hybrid Retrieval & Heat Tracking
     details: BM25 + dense vector hybrid (RRF) with 2-hop BFS graph expansion. Frequently retrieved memories get a logarithmic heat boost dampened by time decay, so fresh facts stay on top.
@@ -37,7 +37,7 @@ features:
     details: Notes are auto-classified as memory (episodic) or knowledge (durable). Knowledge notes carry topic tags and skip consolidation merging and time-decay penalties.
   - icon: 🀄
     title: Chinese-Optimized BM25
-    details: Uses Jieba (via @node-rs/jieba) to segment Chinese, which is what makes BM25 work on it at all. English and mixed text fall back to whitespace tokenization. Japanese and Korean are not segmented — the dense half of retrieval covers them, the keyword half does not.
+    details: Uses Jieba (via @node-rs/jieba) to segment Chinese, which is what makes BM25 work on it at all. English and mixed text fall back to whitespace tokenization. Japanese and Korean get nothing usable — Korean and kana-only Japanese produce no tokens at all, and Japanese containing kanji is segmented as though it were Chinese — a 13-word sentence yields 2 tokens. Dense retrieval covers both, so search works on one half of the hybrid rather than two.
   - icon: 🔐
     title: Per-Agent Memory Isolation
     details: Each agent operates in its own private namespace — memories written by main are invisible to dev by default. An explicit shared scope plus owner/readers/writers fields on every note control cross-agent access.

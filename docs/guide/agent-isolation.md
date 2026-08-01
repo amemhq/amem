@@ -253,12 +253,23 @@ When a shared note is written:
 
 Every `searchMemory` query in Mode A appends a Qdrant payload filter:
 
+```json
+{
+  "must": [
+    { "should": [
+      { "key": "agent_id", "match": { "value": "<self>" } },
+      { "key": "agent_id", "match": { "value": "shared" } }
+    ] }
+  ],
+  "must_not": [
+    { "key": "is_active", "match": { "value": false } }
+  ]
+}
 ```
-must: [
-  { key: "is_active", match: { value: true } },
-  { key: "agent_id", match: { any: ["<self>", "shared"] } }
-]
-```
+
+`is_active` is under `must_not` rather than `must`, which is not the same thing:
+notes written before the field existed have no `is_active` at all, and requiring
+`true` would hide them. Excluding `false` keeps them.
 
 This ensures:
 - Soft-deleted notes (`is_active: false`) are always excluded

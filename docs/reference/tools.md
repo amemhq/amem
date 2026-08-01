@@ -1,6 +1,6 @@
 # Tools Reference
 
-Once installed, openclaw-amem exposes four tools to OpenClaw agents.
+Once installed, openclaw-amem exposes five tools to OpenClaw agents.
 
 ---
 
@@ -17,11 +17,12 @@ memory_add(text="Your memory content here.")
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `text` | `string` | ✅ | The content to store as a memory. |
+| `subjects` | `string[]` | — | Who this memory is about. Empty means it is about the world or the agent itself and stays visible whoever is present. |
 
 **What happens internally**
 
 1. Exact hash dedup check — skips if identical content already exists
-2. High-similarity dedup check (cosine ≥ 0.95) — updates existing note instead of creating duplicate
+2. High-similarity dedup check (cosine ≥ 0.85) — folds into the existing note instead of creating a duplicate. Between 0.72 and 0.85 the new note is stored but flagged `pending_merge`
 3. LLM note construction — extracts keywords, tags, context summary, category
 4. Link generation — finds up to 6 candidates, LLM verifies bidirectional links
 5. Memory evolution — updates attributes on up to 3 linked notes
@@ -42,7 +43,14 @@ memory_search(query="your search query", limit=5)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `query` | `string` | — | Natural language search query. |
-| `limit` | `number` | `topK` config value | Maximum results to return. |
+| `limit` | `number` | `5` | Maximum **matches** to return. Link-expanded notes are appended on top of this, up to 8 more. |
+| `topicsFilter` | `string[]` | — | Keep only knowledge notes carrying all of these topics. **Memory notes pass through unfiltered**, so on a store that is mostly episodic this filters almost nothing. |
+| `subject` | `string` | — | Who you are talking to or about. Returns memories that name them plus memories that name nobody. |
+
+::: warning `limit` does not read the `topK` config key
+The tool hardcodes `5`. `topK` in `openclaw.json` is read by the memory-capability
+path, not by this tool — setting it does not change what `memory_search` returns.
+:::
 
 **Returns**
 
@@ -69,7 +77,7 @@ An array of memory objects ranked by relevance:
 
 | Field | Meaning |
 | :--- | :--- |
-| `similarity` | Cosine distance to the query. **Not** what ordered the list. |
+| `similarity` | Cosine similarity to the query, −1 to 1. **Not** what ordered the list. |
 | `rrf` | The fused score the matches are sorted by. `0` when no retriever ranked this note. |
 | `via` | `match` — retrieved for the query. `link` — not retrieved; here because it links to one that was. |
 
@@ -108,7 +116,7 @@ memory_list()
 
 ## `memory_consolidate`
 
-Manually trigger same-day semantic deduplication and link cascading.
+Manually trigger semantic deduplication and link cascading across the whole store.
 
 ```js
 memory_consolidate()

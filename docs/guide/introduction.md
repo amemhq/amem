@@ -24,7 +24,7 @@ A-MEM is a memory architecture for LLM agents inspired by the **Zettelkasten met
 
 1. **Note Construction** — On write, the LLM extracts keywords, tags, a context summary, and categorizes the note (Technical, Business, Personal, Project, Research, System, General).
 
-2. **Link Generation** — Retrieves top-6 candidates; the LLM judges whether to link bidirectionally (similarity > 0.3).
+2. **Link Generation** — Retrieves top-6 candidates; the LLM judges whether to link bidirectionally (similarity ≥ 0.3).
 
 3. **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
 
