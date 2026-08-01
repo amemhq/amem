@@ -1,0 +1,98 @@
+name: Default model smoke test
+
+# Loads the model a fresh install would load, at the dtype amem resolves for it,
+# and encodes with it.
+#
+# Nothing else does. Every unit and integration test mocks `embedding.js`, which
+# is right — they are testing retrieval, not ONNX — but it means the default
+# configuration had never been loaded by anything before it reached users. 2.0.0
+# shipped `fp16` for bge-m3 and `onnxruntime-node` cannot load those weights: a
+# fresh install could not embed at all, and the whole suite was green.
+#
+# Not on pull_request: the download is over 2 GB and most PRs cannot affect it.
+# Weekly catches an upstream break in the model, the conversion or the runtime;
+# manual is for when something here changes on purpose.
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model to load. Defaults to whatever DEFAULT_EMBEDDING_MODEL is.'
+        required: false
+      dtype:
+        description: 'dtype to force. Leave empty to use amem resolution.'
+        required: false
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then exit 0; fi
+            echo "::warning::pnpm install failed (attempt $attempt/3); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::pnpm install failed after 3 attempts"
+          exit 1
+
+      # Goes through amem's own resolution rather than calling Transformers.js
+      # directly, so the model, pooling and dtype under test are the ones a user
+      # would actually get.
+      - name: Load the default model and encode
+        working-directory: packages/amem-core
+        env:
+          AMEM_EMBED_MODEL: ${{ inputs.model }}
+          AMEM_EMBED_DTYPE: ${{ inputs.dtype }}
+        run: |
+          cat > /tmp/smoke.ts <<'TS'
+          import { encode, getEmbeddingDim, getEmbeddingModel, getEmbeddingPooling, getEmbeddingDtype } from './src/embedding.js'
+
+          console.log('model  :', getEmbeddingModel())
+          console.log('pooling:', getEmbeddingPooling())
+          console.log('dtype  :', getEmbeddingDtype() ?? '(library default)')
+
+          const dim = await getEmbeddingDim()
+          if (!Number.isInteger(dim) || dim <= 0) throw new Error(`bad dimension: ${dim}`)
+          console.log('dim    :', dim)
+
+          const a = await encode('the cat sat on the mat')
+          const b = await encode('a cat was sitting on a mat')
+          const c = await encode('quarterly depreciation of leasehold improvements')
+          if (a.length !== dim) throw new Error(`encode returned ${a.length}, getEmbeddingDim said ${dim}`)
+
+          const dot = (x: number[], y: number[]) => x.reduce((s, v, i) => s + v * y[i], 0)
+          const norm = Math.sqrt(dot(a, a))
+          if (Math.abs(norm - 1) > 1e-3) throw new Error(`vector is not unit length: ${norm}`)
+
+          const near = dot(a, b)
+          const far = dot(a, c)
+          console.log(`near   : ${near.toFixed(4)}`)
+          console.log(`far    : ${far.toFixed(4)}`)
+          // Loose on purpose. This is not a quality bar — it is the difference
+          // between real embeddings and a model that loaded but returns noise.
+          if (near <= far) throw new Error(`paraphrase (${near}) scored no higher than an unrelated sentence (${far})`)
+
+          console.log('\nOK')
+          TS
+          cp /tmp/smoke.ts ./smoke.ts
+          npx tsx ./smoke.ts

@@ -89,7 +89,7 @@ Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
 openclaw gateway restart
 ```
 
-First run downloads the embedding model (`bge-m3`, 1.08 GB) and caches it. Later
+First run downloads the embedding model (`bge-m3`, 2.27 GB) and caches it. Later
 restarts are instant. If that is too much, the only smaller model worth setting is
 `AMEM_EMBED_MODEL=Xenova/bge-small-zh-v1.5` — 25 MB, Chinese only, and it caps at
 512 tokens. Set it **before** you have memories, since changing it afterwards means

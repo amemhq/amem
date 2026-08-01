@@ -35,17 +35,6 @@ export const LEGACY_DEFAULT_EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-Mi
 export const LEGACY_DEFAULT_DIM = 384
 
 /**
- * Weight precision for the model amem itself ships.
- *
- * Deliberately not a global default. Transformers.js falls back to fp32, which
- * for bge-m3 is a 2.16 GB download against 1.08 GB at fp16 — but several models
- * this project documents publish *only* fp32 (`multilingual-e5-large-instruct`,
- * `Qwen3-Embedding-4B`), so forcing fp16 on whatever the user picked would fail
- * to load on our say-so. It applies to our choice, and to nothing else.
- */
-const DEFAULT_MODEL_DTYPE = 'fp16'
-
-/**
  * Set when a collection says which model built it, so the engine keeps using that
  * one instead of whatever the current default happens to be.
  *
@@ -150,15 +139,20 @@ export function getEmbeddingDevice(): string | undefined {
  * Weight precision. Unset means Transformers.js picks, which on Node is `fp32` —
  * the largest download of every variant a model publishes.
  *
+ * 2.0.0 defaulted this to `fp16` for bge-m3, to halve a 2.27 GB download. That
+ * shipped broken: `onnxruntime-node` 1.24.3 aborts loading those weights in
+ * `SimplifiedLayerNormFusion`, on a node the fp16 conversion inserts, so the
+ * default install could not embed at all. Reproduced on bge-m3 and on
+ * gte-multilingual-base, on two machines — it is the runtime and fp16, not one
+ * model. Nothing here picks a dtype now; saving the download is not worth
+ * choosing a build we have not loaded.
+ *
  * Passed through rather than validated against a list: Transformers.js already
  * rejects an unknown value and names the valid ones, and a list here would go
  * stale the moment it gains a quantization.
  */
 export function getEmbeddingDtype(): string | undefined {
-  const explicit = process.env.AMEM_EMBED_DTYPE?.trim()
-  if (explicit) return explicit
-  // Only for the model we chose. See DEFAULT_MODEL_DTYPE.
-  return getEmbeddingModel() === DEFAULT_EMBEDDING_MODEL ? DEFAULT_MODEL_DTYPE : undefined
+  return process.env.AMEM_EMBED_DTYPE?.trim() || undefined
 }
 
 /** Everything that decides which weights are resident. */
