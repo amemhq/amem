@@ -99,9 +99,9 @@ If you were previously using `memory-core`, you can safely remove or disable it 
 openclaw gateway restart
 ```
 
-On first run, the plugin downloads the `bge-m3` ONNX embedding model (1.08 GB at fp16) and caches it locally. Subsequent restarts are instant.
+On first run, the plugin downloads the `bge-m3` ONNX embedding model (2.27 GB) and caches it locally. Subsequent restarts are instant.
 
-Upgrading rather than installing fresh? Nothing is downloaded — an existing store keeps the model that built it, and moving to `bge-m3` is a [deliberate migration](/reference/embedding-models#changing-the-model-on-a-store-you-already-have). If 1.08 GB is more than you want, see [choosing a smaller model](/reference/embedding-models#why-bge-m3-is-the-default) — the obvious candidate does not load, and the ones that do give up either the context window or English.
+Upgrading rather than installing fresh? Nothing is downloaded — an existing store keeps the model that built it, and moving to `bge-m3` is a [deliberate migration](/reference/embedding-models#changing-the-model-on-a-store-you-already-have). If 2.27 GB is more than you want, see [choosing a smaller model](/reference/embedding-models#why-bge-m3-is-the-default) — the obvious candidate does not load, and the ones that do give up either the context window or English.
 
 ---
 

@@ -25,7 +25,7 @@ It reports first and writes nothing until you add `--apply`. Your original store
 only read until the very last step, so there is nothing to undo if a run looks
 wrong.
 
-**A fresh install downloads 1.08 GB** for the new model, once, then caches it. If
+**A fresh install downloads 2.27 GB** for the new model, once, then caches it. If
 that is more than you want, `AMEM_EMBED_MODEL=Xenova/bge-small-zh-v1.5` is 25 MB —
 Chinese only, and it stops at 512 tokens. Set it before you store anything;
 changing it later means migrating.

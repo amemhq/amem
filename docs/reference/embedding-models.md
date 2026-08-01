@@ -85,7 +85,8 @@ fallback. bge-m3 wins on the properties that decide whether a default is safe:
 - **Chinese and English both work.** 65.29 C-MTEB dense-only retrieval and 67.8
   MIRACL over 18 languages, which is the actual target here.
 
-The cost is size: 1.08 GB at fp16, against 118 MB for the model it replaces.
+The cost is size: 2.27 GB, against 118 MB for the model it replaces. 2.0.0 shipped
+an `fp16` default to halve that and it did not load — see [Precision](#precision).
 
 `onnx-community/gte-multilingual-base` is the real alternative, and it is not the
 smaller one it was described as here. Both builds were loaded and checked:
@@ -122,8 +123,8 @@ per-agent collections need it.
 
 The bare run downloads the model. It has to: the state it reports is the source's
 vector width against the target model's, and the only way to know the second is to
-load it and measure. So the first `amem-migrate` of any kind pulls 1.08 GB, even
-though it writes nothing.
+load it and measure. So the first `amem-migrate` of any kind pulls the whole model,
+2.27 GB for the default, even though it writes nothing.
 
 It reports where the store is and what comes next. `--apply` does the next step
 and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
@@ -357,17 +358,37 @@ holding its weights resident in the same process as your agent.
 
 `AMEM_EMBED_DTYPE` picks which weights are downloaded and used. Transformers.js
 defaults to **`fp32`** on Node, which is the largest file a model publishes — for
-`bge-m3` that is 2.16 GB where `fp16` is 1.08 GB and `int8` is 542 MB.
+`bge-m3` that is 2.27 GB where `fp16` is 1.13 GB and `int8` is 568 MB.
 
 ```bash
-AMEM_EMBED_DTYPE=fp16
+AMEM_EMBED_DTYPE=int8
 ```
 
-amem overrides that default to `fp16` **for `Xenova/bge-m3` only**, halving the
-download for the model it ships. Any other model gets the library default,
-because several of the ones listed on this page — `multilingual-e5-large-instruct`,
-`Qwen3-Embedding-4B` — publish fp32 and nothing else, and forcing fp16 on them
-would fail at load for a saving that is not amem's to choose.
+amem sets nothing here. It is a pass-through, for every model including its own.
+
+::: danger fp16 does not load
+`onnxruntime-node` 1.24.3 aborts loading an fp16 ONNX in
+`SimplifiedLayerNormFusion`, on a node the fp16 conversion inserts:
+
+```
+Attempting to get index by a name which does not exist:
+  InsertedPrecisionFreeCast_/encoder/layer.23/output/LayerNorm/Constant_output_0
+```
+
+Reproduced on `bge-m3` and on `gte-multilingual-base`, on two machines. It is the
+runtime and the precision, not a particular model.
+
+2.0.0 and 2.0.1 set `fp16` for `bge-m3` automatically, to halve the download. That
+means a fresh install of either **could not embed at all** — and nothing caught it,
+because every test mocks the embedding module and no test had ever loaded a model.
+Fixed in 2.0.2 by setting no dtype at all, and a
+[smoke workflow](https://github.com/amemhq/amem/blob/main/.github/workflows/model-smoke.yml)
+now loads the default model for real on a schedule.
+
+If you set `fp16` yourself, expect it to fail until onnxruntime ships a fix. `int8`
+and `q8` are untested here — see the header of the tables about what "untested"
+means on this page.
+:::
 
 Valid values are whatever the model publishes: `fp32`, `fp16`, `q8`, `int8`,
 `uint8`, `q4`, `q4f16`, `bnb4`. An unknown one fails at load and names the valid
