@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.1.1
+
+### Patch Changes
+
+- [#126](https://github.com/amemhq/amem/pull/126) [`445cd96`](https://github.com/amemhq/amem/commit/445cd96a40223e297e8c71a7b0ae5d3edf737d0a) Thanks [@heichaowo](https://github.com/heichaowo)! - Report the real similarity for a result BM25 found on its own.
+
+  RRF fuses two lists, so a note can reach the results on lexical match alone,
+  having never been in the dense top-n. Nothing had measured its cosine, and
+  `similarity` fell through to `0` — so a note that matched the query by text
+  rendered as the least relevant row in the list.
+
+  2.1.0 fixed the same `?? 0` for link-expanded notes and missed this one. Both
+  vectors are already in memory, so the fallback now measures rather than guesses.
+
+  Found by an agent re-testing retrieval on a real store: it saw a `similarity: 0`
+  row in the top 5 and concluded zero-scoring notes were still getting into the
+  dense side. They were not — that path was fixed. The row was a lexical hit whose
+  cosine nobody had taken.
+
+- [#129](https://github.com/amemhq/amem/pull/129) [`67651ec`](https://github.com/amemhq/amem/commit/67651ec7792077e2ca741024f0ca18550b9ee667) Thanks [@heichaowo](https://github.com/heichaowo)! - Drop `@types/uuid`.
+
+  It is a stub — npm deprecates it with "uuid provides its own type definitions, so
+  you do not need this installed", and `uuid@14` ships `dist/index.d.ts`. Both
+  packages carried it as a devDependency and `openclaw-amem` did not even import
+  `uuid`. Typecheck passes without it.
+
+  Renovate's dependency dashboard flagged it as deprecated with no replacement
+  available, which is correct: the replacement is nothing.
+
 ## 2.1.0
 
 ### Minor Changes
