@@ -706,7 +706,12 @@ export async function searchMemory(
       keywords: note.keywords,
       links: note.links,
       timestamp: note.timestamp,
-      similarity: embSimMap.get(id) ?? bfsSimMap.get(id) ?? 0,
+      // Neither map covers a note that got here on BM25 alone: it was never in
+      // the dense results, and it was not expanded into. That is a real cosine
+      // nobody had measured, not a zero — and reporting 0 made a lexical match
+      // look like the least relevant row in the list. Both vectors are already
+      // in hand, so measuring it is one dot product.
+      similarity: embSimMap.get(id) ?? bfsSimMap.get(id) ?? cosineSimilarity(queryEmbedding, note.embedding),
       rrf: rrfMap.get(id) ?? 0,
       via,
       topics: note.topics ?? [],

@@ -176,6 +176,30 @@ describe('link-expanded results', () => {
  * hits, and stably — the same notes on every such query, so it biased rather than
  * averaged out.
  */
+describe('matches that only BM25 found', () => {
+  // 60° off the query, so a real cosine of 0.5 — and deliberately absent from the
+  // dense results, so the only thing that can put it in the list is its text.
+  const LEXICAL = note('lexical', [0.5, Math.sqrt(3) / 2], [], 'alpha beta')
+  const DENSE = note('dense', [1, 0], [], 'alpha')
+
+  it('reports the real cosine, not zero', async () => {
+    // Before this was fixed, similarity fell through to 0: the note was in
+    // neither the dense map nor the expansion map, so nothing had measured it.
+    // A lexical hit then rendered as the least relevant row in the list.
+    const res = await searchMemory('alpha', 5, 'main', { storageCtx: makeCtx([DENSE, LEXICAL], [DENSE]) })
+    const only = res.find((r) => r.id === 'lexical')
+    expect(only?.via).toBe('match')
+    expect(only?.similarity).toBeCloseTo(0.5, 5)
+  })
+
+  it('still reports the dense score for anything the vector search returned', async () => {
+    // The dense score is authoritative where it exists — it comes from Qdrant,
+    // which may apply its own scoring — so the fallback must not shadow it.
+    const res = await searchMemory('alpha', 5, 'main', { storageCtx: makeCtx([DENSE, LEXICAL], [DENSE]) })
+    expect(res.find((r) => r.id === 'dense')?.similarity).toBe(1)
+  })
+})
+
 describe('lexical misses', () => {
   const A = note('a', [1, 0], [], 'alpha')
   const B = note('b', [0.9, 0.1], [], 'beta')
