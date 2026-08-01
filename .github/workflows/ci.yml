@@ -211,6 +211,13 @@ jobs:
       - name: Assert no published package depends on a private one
         run: node tools/assert-no-private-deps.mjs
 
+      # Only meaningful here: on any other branch the version has not been bumped
+      # yet, so there is nothing to look up. The publish step falls back silently
+      # when the section is missing, which is right for a release but means the
+      # omission is invisible until someone reads the ClawHub listing.
+      - name: Assert the release has a plugin-facing release note
+        run: node tools/assert-release-note-present.mjs
+
   changeset-check:
     # Skip PRs that never carry a changeset by design: the changesets bot's
     # own "Version Packages" PR (it consumes them), and dependency bumps
