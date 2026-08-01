@@ -1,5 +1,63 @@
 # @amemhq/core
 
+## 2.1.0
+
+### Minor Changes
+
+- [#123](https://github.com/amemhq/amem/pull/123) [`a2479bb`](https://github.com/amemhq/amem/commit/a2479bba09ac9803c8db15a29cc63521aa1b3539) Thanks [@heichaowo](https://github.com/heichaowo)! - Make a migration survivable without reading the source first.
+
+  Everything here came out of running one on a real store, in the order it went
+  wrong:
+
+  - **The model cache is per copy of the library.** Transformers.js caches inside
+    its own install directory and reads no environment variable for it, so the
+    plugin's copy and every `npx --package=@amemhq/core` run download the same
+    2.27 GB separately — and each fresh `npx` temp directory downloads it again.
+    `AMEM_MODEL_CACHE` points them at one path. `AMEM_MODEL_DIR` reads weights
+    already on disk, for a slow link or a machine that cannot reach HuggingFace.
+  - **A download printed nothing for 75 minutes.** `progress_callback` now reports
+    the weights at every 10%. A cached model still prints nothing.
+  - **Nothing said to stop the agent, or when.** The long part is the download,
+    which is safe to do with the agent up; the writing is what wants it stopped.
+    Usage and docs now say so in that order.
+  - **`amem-migrate help` started a 2.27 GB download.** Only `-h` and `--help` were
+    recognised, so the bare word fell through to a normal run.
+  - **`--switch` deleted the source outright.** It snapshots first now and prints
+    the file path. Freeing the name requires dropping the collection; losing the
+    data does not, and those are two decisions. Note the path really is the only
+    handle afterwards — once the name is an alias, the snapshot API resolves it to
+    the new collection and reports none.
+
+  Docs gain what has actually been run, keyed by model _and_ dtype rather than model
+  alone, since they fail independently: `bge-m3` is in use at fp32 and does not load
+  at fp16. Plus measured timings for each phase of a migration, because the three
+  have completely different bottlenecks and only one scales with the store.
+
+### Patch Changes
+
+- [#121](https://github.com/amemhq/amem/pull/121) [`e1b40df`](https://github.com/amemhq/amem/commit/e1b40df7c1ab60c6cf9fcebf35cc46f8347357f3) Thanks [@heichaowo](https://github.com/heichaowo)! - Stop setting `fp16`. It does not load.
+
+  2.0.0 defaulted `AMEM_EMBED_DTYPE` to `fp16` for `bge-m3`, to halve a 2.27 GB
+  download. `onnxruntime-node` 1.24.3 aborts on those weights in
+  `SimplifiedLayerNormFusion`, on a node the fp16 conversion inserts, so a fresh
+  install of 2.0.0 or 2.0.1 could not embed at all — the plugin logs
+  `memory is UNUSABLE` and no search or write works. Reproduced on `bge-m3` and
+  `gte-multilingual-base`, on two machines, so it is the runtime and the precision
+  rather than one model.
+
+  Nothing picks a dtype now, for any model. `AMEM_EMBED_DTYPE` is a pass-through
+  again and the default install gets the library's `fp32`.
+
+  Existing stores were never affected: the fp16 default only applied to `bge-m3`,
+  and a store built before 2.0.0 keeps its own model.
+
+  The reason this shipped is that no test had ever loaded a model — every unit and
+  integration test mocks `embedding.js`, correctly, since they test retrieval rather
+  than ONNX. A `model-smoke` workflow now loads the default model at the dtype amem
+  resolves for it, encodes, and checks the vector is unit length and that a
+  paraphrase outscores an unrelated sentence. Weekly and on demand, not per-PR: the
+  download is over 2 GB.
+
 ## 2.0.0
 
 ### Major Changes
