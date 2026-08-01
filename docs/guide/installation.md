@@ -32,10 +32,18 @@ openclaw plugins install --link ./packages/openclaw-amem
 
 ```bash
 openclaw plugins update openclaw-amem
+```
+
+OpenClaw prints "Restart the gateway to load plugins and hooks" when it finishes.
+Whether it needs you to depends on your setup — a no-op update leaves the gateway
+process untouched, so if search still works afterwards it picked the new build up
+on its own. If it does not:
+
+```bash
 openclaw gateway restart
 ```
 
-Two things worth knowing before you run it.
+Two things worth knowing before you update.
 
 **It rebuilds `node_modules`, which is where the model cache lives by default** —
 so an update re-downloads 2.27 GB unless you have set `AMEM_MODEL_CACHE` to a path

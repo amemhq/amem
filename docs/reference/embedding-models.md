@@ -88,24 +88,53 @@ Loads, produces sane vectors, never had a store behind it.
 
 ### 3. Should work, never loaded
 
-Architecture is one Transformers.js maps, no `Dense` module for the export to drop
-— both checked by `node tools/audit-embedding-models.mjs`, neither requiring a
-download. **20 of the 33 models on this page are in this tier.** They carry
-`Runtime: native` in the tables below.
+The architecture is one Transformers.js maps and there is no `Dense` module for the
+export to drop — both checked by `node tools/audit-embedding-models.mjs` without
+downloading anything. Nothing is wrong with them. Nobody has run one.
 
-Nothing is wrong with them. Nobody has run one. If you do, please
-[say what happened](https://github.com/amemhq/amem/issues).
+- `Alibaba-NLP/gte-modernbert-base`
+- `Snowflake/snowflake-arctic-embed-l`
+- `Snowflake/snowflake-arctic-embed-m`
+- `Xenova/all-MiniLM-L6-v2`
+- `Xenova/all-mpnet-base-v2`
+- `Xenova/bge-base-en-v1.5`
+- `Xenova/bge-base-zh-v1.5`
+- `Xenova/bge-large-en-v1.5`
+- `Xenova/bge-small-en-v1.5`
+- `Xenova/bge-small-zh-v1.5`
+- `Xenova/e5-large-v2`
+- `ibm-granite/granite-embedding-311m-multilingual-r2`
+- `ibm-granite/granite-embedding-97m-multilingual-r2`
+- `intfloat/multilingual-e5-large-instruct`
+- `jinaai/jina-embeddings-v3`
+- `nomic-ai/nomic-embed-text-v1.5`
+- `onnx-community/bge-m3-ONNX`
+- `onnx-community/granite-embedding-30m-english-ONNX`
+- `onnx-community/granite-embedding-small-english-r2-ONNX`
+
+Scores, dimensions and context length for each are in the tables further down. If
+you run one, please [say what happened](https://github.com/amemhq/amem/issues) —
+that is the only way anything moves to tier 1 or 2.
 
 ### 4. Load, but through a path nobody supports
 
 Transformers.js has no mapping for the architecture and falls back to a generic
-encoder, which it logs as unsupported. Nine models, including every
-Qwen3-Embedding. They carry `Runtime: **fallback**`.
+encoder, which it logs as unsupported. It works today; nothing promises the next
+version still does.
 
-`gte-multilingual-base` is in this tier *and* in tier 2 — it is the one fallback
-model that has been loaded and checked. That is the whole difference between "runs
-through an unsupported path" and "runs through an unsupported path and we looked".
-See [what a fallback model risks](#what-a-fallback-model-risks).
+- `Alibaba-NLP/gte-large-en-v1.5`
+- `onnx-community/Qwen3-Embedding-0.6B-ONNX`
+- `onnx-community/Qwen3-Embedding-4B-ONNX`
+- `onnx-community/Qwen3-Embedding-8B-ONNX`
+- `onnx-community/embeddinggemma-300m-ONNX`
+- `onnx-community/harrier-oss-v1-0.6b-ONNX`
+- `onnx-community/harrier-oss-v1-270m-ONNX`
+
+Plus `onnx-community/gte-multilingual-base`, which is in this tier and in tier 2 —
+the one fallback model anybody has loaded.
+
+See [what a fallback model risks](#what-a-fallback-model-risks) — less than it
+sounds, but not nothing.
 
 ### 5. Do not work
 

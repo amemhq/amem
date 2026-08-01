@@ -37,7 +37,7 @@ memory_search(query)
       ▼
  1. Embed query (local ONNX)
       │
-      ├──► BM25 ranking (Jieba tokenized for CJK)
+      ├──► BM25 ranking (Jieba for Chinese; see note on ja/ko)
       │    only notes sharing a term with the query
       └──► Dense vector cosine similarity
       │

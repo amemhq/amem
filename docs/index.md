@@ -37,7 +37,7 @@ features:
     details: Notes are auto-classified as memory (episodic) or knowledge (durable). Knowledge notes carry topic tags and skip consolidation merging and time-decay penalties.
   - icon: 🀄
     title: Chinese-Optimized BM25
-    details: Uses Jieba (via @node-rs/jieba) for CJK word segmentation, dramatically improving recall for Chinese queries. English and mixed text fall back to whitespace tokenization automatically.
+    details: Uses Jieba (via @node-rs/jieba) to segment Chinese, which is what makes BM25 work on it at all. English and mixed text fall back to whitespace tokenization. Japanese and Korean are not segmented — the dense half of retrieval covers them, the keyword half does not.
   - icon: 🔐
     title: Per-Agent Memory Isolation
     details: Each agent operates in its own private namespace — memories written by main are invisible to dev by default. An explicit shared scope plus owner/readers/writers fields on every note control cross-agent access.

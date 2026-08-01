@@ -3,7 +3,7 @@
 | Dimension | Traditional RAG | A-MEM (Zettelkasten Graph) |
 | :--- | :--- | :--- |
 | **Retrieval Mode** | Single-vector similarity | BM25 + Dense Vector Hybrid (RRF) + 2-hop Graph Expansion |
-| **Chinese Recall** | Character-level n-gram / single char split | Jieba word segmentation for accurate CJK BM25 indexing |
+| **Chinese Recall** | Character-level n-gram / single char split | Jieba word segmentation for accurate Chinese BM25 indexing |
 | **Fact Evolution** | Static chunking — cannot update historical entries | Dynamic Attribute Evolution & Connection Strengthening |
 | **Temporal Conflicts** | Recalls contradictory facts simultaneously | `is_active` soft-invalidation shields outdated facts |
 | **Memory Bloat** | Fragmented memories stack up infinitely | Daily Consolidation merges semantic duplicates |

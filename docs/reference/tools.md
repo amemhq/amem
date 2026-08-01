@@ -81,7 +81,7 @@ something that did match.
 **Retrieval pipeline**
 
 1. Embeds query locally (ONNX)
-2. BM25 ranking with Jieba tokenization for CJK — only notes that share a term
+2. BM25 ranking with Jieba tokenization for Chinese — only notes that share a term
    with the query; a note the query never hits contributes nothing
 3. Dense vector cosine similarity search
 4. RRF fusion (k=60)
