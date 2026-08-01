@@ -63,6 +63,77 @@ then `--switch` each in turn. There is no partial state that works, so do not
 restart the agent in the middle.
 :::
 
+## Which models actually work
+
+Five tiers, and the first question is always which tier a model is in — not how it
+scores. Everything below this section is organised by what a model is good at, and
+that only matters once it runs.
+
+### 1. Run here, on a real store
+
+The only ones anybody has loaded and used in anger.
+
+| Model | dtype | Evidence |
+| :--- | :--- | :--- |
+| `Xenova/bge-m3` | **fp32** | The default from 2.0.0. 2112-note store, macOS arm64, 1024-dim |
+| `Xenova/paraphrase-multilingual-MiniLM-L12-v2` | fp32 | The default before 2.0.0 — months of production use. Caps at **128 tokens**, which is why it was replaced |
+
+### 2. Loaded, but nothing runs on them
+
+Loads, produces sane vectors, never had a store behind it.
+
+| Model | dtype | Evidence |
+| :--- | :--- | :--- |
+| `onnx-community/gte-multilingual-base` | **fp32** | 768 unit-norm dims; a Chinese near-synonym pair at 0.86 against 0.44 for an unrelated one. Its fp16 does **not** load |
+
+### 3. Should work, never loaded
+
+Architecture is one Transformers.js maps, no `Dense` module for the export to drop
+— both checked by `node tools/audit-embedding-models.mjs`, neither requiring a
+download. **20 of the 33 models on this page are in this tier.** They carry
+`Runtime: native` in the tables below.
+
+Nothing is wrong with them. Nobody has run one. If you do, please
+[say what happened](https://github.com/amemhq/amem/issues).
+
+### 4. Load, but through a path nobody supports
+
+Transformers.js has no mapping for the architecture and falls back to a generic
+encoder, which it logs as unsupported. Nine models, including every
+Qwen3-Embedding. They carry `Runtime: **fallback**`.
+
+`gte-multilingual-base` is in this tier *and* in tier 2 — it is the one fallback
+model that has been loaded and checked. That is the whole difference between "runs
+through an unsupported path" and "runs through an unsupported path and we looked".
+See [what a fallback model risks](#what-a-fallback-model-risks).
+
+### 5. Do not work
+
+[Not usable today](#not-usable-today) has the list and the specific blocker for
+each. Two ways in:
+
+- **A `Dense` module.** The ONNX export leaves a learned projection behind, so you
+  get vectors nobody benchmarked, at a plausible width, with no error.
+  `Conan-embedding-v1` (1024 → 1792) and `LaBSE` (768 → 768) — the second one is
+  the same width in and out, so nothing anywhere can notice.
+- **No loadable export at all**, usually SafeTensors-only or too large.
+
+And one that is not about a model: **`fp16` does not load for anything**, because
+of the runtime rather than the weights. See [Precision](#precision).
+
+### How the tiers are decided
+
+Tiers 3, 4 and 5's first cause are **checked by script, without downloading**:
+`modules.json` on the *upstream* model for a `Dense` module, and `config.json`'s
+`model_type` against the architectures the pinned Transformers.js maps. Run it
+yourself with `node tools/audit-embedding-models.mjs`.
+
+Tiers 1 and 2 cannot be scripted from metadata — they mean somebody loaded the
+weights. That is why they are short.
+
+**A tier is per model *and* dtype.** They fail independently: `bge-m3` runs a real
+store at fp32 and does not load at all at fp16.
+
 ## Why bge-m3 is the default
 
 Not because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
@@ -176,41 +247,10 @@ Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
   types are not retrieval scores and are marked where used.
 - **not published** means exactly that. Nothing here is estimated or inferred.
 - Sizes are the real ONNX file sizes listed on HuggingFace, per dtype.
-
-### The `Runtime` column
-
-An ONNX export existing is not the same as the model working, and the difference
-is invisible from the repo listing. Two things are checked for every model here,
-without downloading weights, by `node tools/audit-embedding-models.mjs`:
-
-| `Runtime` | Meaning |
-| :--- | :--- |
-| **native** | Transformers.js maps the architecture, and there is no `Dense` module for the export to drop. |
-| **fallback** | No mapping for the architecture. It still loads, through a generic encoder path that Transformers.js logs as unsupported. |
-
-A model with a `Dense` module is not given a row at all — it is in [Not usable
-today](#not-usable-today), because the export leaves the projection behind and you
-get a representation that was never benchmarked. `Conan-embedding-v1` and `LaBSE`
-were both in these tables until the audit was written.
-
-### What has actually been run
-
-`Runtime` is a structural check, not a measurement — it is what a script can tell
-without downloading anything. Loading is a separate question, and it is answered
-per **model *and* dtype**, because they fail independently: `bge-m3` is fine at
-fp32 and does not load at all at fp16.
-
-| | Meaning | Which |
-| :--- | :--- | :--- |
-| **in use** | Loaded, and running a real store | `Xenova/bge-m3` at fp32 — 2112 notes, macOS arm64 |
-| **loaded** | Loaded, sane vectors, no real store behind it | `onnx-community/gte-multilingual-base` at fp32 |
-| **broken** | Loading fails, with the error recorded | **any model at `fp16`** — see [Precision](#precision) |
-| *(nothing)* | Never loaded by anyone here | everything else |
-
-Everything else in these tables has been checked on paper and on metadata, and
-that is all. That is not a reason to avoid them — it is a reason to load one and
-look before you migrate a store onto it, and to
-[tell us](https://github.com/amemhq/amem/issues) what you find.
+- **Runtime** is the tier from [above](#which-models-actually-work), abbreviated:
+  `native` is tier 3 — the architecture is mapped and there is no `Dense` module —
+  and **`fallback`** is tier 4. Neither means anyone has loaded it; tiers 1 and 2
+  list the models that have been.
 
 ## Chinese and English both matter
 
