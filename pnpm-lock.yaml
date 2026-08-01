@@ -100,9 +100,6 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
-      '@types/uuid':
-        specifier: ^11.0.0
-        version: 11.0.0
       eslint:
         specifier: ^10.7.0
         version: 10.7.0
@@ -153,9 +150,6 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
-      '@types/uuid':
-        specifier: ^11.0.0
-        version: 11.0.0
       eslint:
         specifier: ^10.7.0
         version: 10.7.0
@@ -1242,10 +1236,6 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
-
-  '@types/uuid@11.0.0':
-    resolution: {integrity: sha512-HVyk8nj2m+jcFRNazzqyVKiZezyhDKrGUA3jlEcg/nZ6Ms+qHwocba1Y/AaVaznJTAM9xpdFSh+ptbNrhOGvZA==}
-    deprecated: This is a stub types definition. uuid provides its own type definitions, so you do not need this installed.
 
   '@types/web-bluetooth@0.0.21':
     resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
@@ -4206,10 +4196,6 @@ snapshots:
       undici-types: 8.3.0
 
   '@types/unist@3.0.3': {}
-
-  '@types/uuid@11.0.0':
-    dependencies:
-      uuid: 14.0.1
 
   '@types/web-bluetooth@0.0.21': {}
 
