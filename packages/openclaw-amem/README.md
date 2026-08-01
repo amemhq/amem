@@ -61,8 +61,10 @@ Updating:
 
 ```bash
 openclaw plugins update openclaw-amem
-openclaw gateway restart
 ```
+
+The gateway does not load the new build until it restarts, so follow it with
+`openclaw gateway restart`.
 
 An update rebuilds `node_modules`, and the model cache lives there by default — so
 it re-downloads 2.27 GB unless `AMEM_MODEL_CACHE` points somewhere outside the
