@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { t } from './prompts.js'
+import { warn } from './config.js'
 
 // ── Provider selection ────────────────────────────────────────────────────────
 // The engine's LLM calls are all "prompt in, text out" — no streaming, tools, or
@@ -91,7 +92,7 @@ const _warned = new Set<string>()
 function warnOnce(key: string, message: string): void {
   if (_warned.has(key)) return
   _warned.add(key)
-  console.error(message)
+  warn(message)
 }
 
 // `||`, not `??`, on purpose: an env var set to the empty string means "unset"
@@ -209,7 +210,7 @@ export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = '
       ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL)
       : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL)
   } catch (e) {
-    console.error(`[amem] LLM call failed: ${(e as Error).message}`)
+    warn(`[amem] LLM call failed: ${(e as Error).message}`)
     return null
   }
 }
@@ -410,7 +411,7 @@ Text: ${content}`
       confidence,
     }
   } catch (e) {
-    console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
+    warn(`[amem] Note construction parse failed: ${(e as Error).message}`)
     return {
       keywords: [],
       tags: [],
@@ -485,7 +486,7 @@ export async function llmCrudDecision(
     }
     return ops.slice(0, 3)
   } catch (e) {
-    console.error(`[amem] llmCrudDecision failed: ${(e as Error).message}`)
+    warn(`[amem] llmCrudDecision failed: ${(e as Error).message}`)
     return []
   }
 }
@@ -510,7 +511,7 @@ export async function llmShouldMerge(
     }
     return { shouldMerge: false }
   } catch (e) {
-    console.error(`[amem] llmShouldMerge parse failed: ${(e as Error).message}`)
+    warn(`[amem] llmShouldMerge parse failed: ${(e as Error).message}`)
     return { shouldMerge: false }
   }
 }
@@ -541,7 +542,7 @@ export async function llmEvolutionJudge(
       mergedContent: typeof data.mergedContent === 'string' ? data.mergedContent : undefined,
     }
   } catch (e) {
-    console.error(`[amem] llmEvolutionJudge parse failed: ${(e as Error).message}`)
+    warn(`[amem] llmEvolutionJudge parse failed: ${(e as Error).message}`)
     return { type: 'NEW' }
   }
 }
@@ -594,7 +595,7 @@ ${linkedStr}`
       tagsToUpdate: Array.isArray(data.tags_to_update) ? data.tags_to_update.map(String) : [],
     }
   } catch (e) {
-    console.error(`[amem] Evolution parse failed: ${(e as Error).message}`)
+    warn(`[amem] Evolution parse failed: ${(e as Error).message}`)
     return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
   }
 }
@@ -676,7 +677,7 @@ export async function llmConflictScan(contents: string[]): Promise<ConflictPair[
     }
     return pairs
   } catch (e) {
-    console.error(`[amem] llmConflictScan failed: ${(e as Error).message}`)
+    warn(`[amem] llmConflictScan failed: ${(e as Error).message}`)
     return []
   }
 }

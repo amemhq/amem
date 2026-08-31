@@ -6,6 +6,7 @@
  */
 
 import { canWrite, canRead, SYSTEM_ACTOR } from './auth.js'
+import { warn } from './config.js'
 import {
   DEFAULT_EMBEDDING_MODEL,
   LEGACY_DEFAULT_DIM,
@@ -370,7 +371,7 @@ export async function ensureCollection(collectionName?: string): Promise<void> {
         // Every startup, by design. This is a store that still works, so nothing
         // forces the issue — but it is silently truncating and the only way the
         // operator finds out is being told.
-        console.warn(
+        warn(
           `[amem] "${col}" is on ${LEGACY_DEFAULT_EMBEDDING_MODEL} (${LEGACY_DEFAULT_DIM}-dim).\n` +
             `[amem] ${DEFAULT_EMBEDDING_MODEL} reads 8192 tokens where that one stops at 128, so ` +
             `anything longer is being truncated before it reaches the vector.\n` +
@@ -954,7 +955,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
             })
           ),
         ]).catch((err: unknown) => {
-          console.error(`[amem] retrieval tracking patch failed: ${(err as Error).message}`)
+          warn(`[amem] retrieval tracking patch failed: ${(err as Error).message}`)
         })
         for (const r of queryResults) {
           r.note.retrieval_count = (r.note.retrieval_count || 0) + 1

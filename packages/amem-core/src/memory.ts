@@ -19,7 +19,7 @@ import {
   llmConflictScan,
 } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
-import { getDataDir } from './config.js'
+import { getDataDir, warn as engineWarn } from './config.js'
 import { Jieba } from '@node-rs/jieba'
 
 /**
@@ -431,7 +431,7 @@ export async function addMemory(
       }
     }
   } catch (e) {
-    console.error(`[warn] Link/Evolution phase failed: ${(e as Error).message}`)
+    engineWarn(`[amem] link/evolution phase failed: ${(e as Error).message}`)
   }
 
   console.log(`[done] Note added: ${note.id}`)
@@ -909,8 +909,8 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
   const ctx = storageCtx ?? defaultCtx()
   const log = {
     info: (msg: string) => (logger ? logger.info(msg) : console.log(msg)),
-    warn: (msg: string) => (logger ? logger.warn(msg) : console.warn(msg)),
-    error: (msg: string) => (logger ? logger.error(msg) : console.error(msg)),
+    warn: (msg: string) => (logger ? logger.warn(msg) : engineWarn(msg)),
+    error: (msg: string) => (logger ? logger.error(msg) : engineWarn(msg)),
   }
 
   log.info(`[Consolidation] Starting consolidation for agentId: ${agentId}`)
