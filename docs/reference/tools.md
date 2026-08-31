@@ -81,10 +81,7 @@ An array of memory objects ranked by relevance:
 | `rrf` | The fused score the matches are sorted by. `0` when no retriever ranked this note. |
 | `via` | `match` — retrieved for the query. `link` — not retrieved; here because it links to one that was. |
 
-`via` is the field to read when a result looks unrelated. Link-expanded notes are
-appended after the matches in discovery order and were never ranked, so their
-position carries no meaning — they are there because the graph connects them to
-something that did match.
+`via` is the field to read when a result looks unrelated. The tool appends link-expanded notes after the matches in discovery order. These notes were never ranked. Their position carries no meaning. They appear because the graph connects them to a note that matched.
 
 **Retrieval pipeline**
 
@@ -122,7 +119,7 @@ Manually trigger semantic deduplication and link cascading across the whole stor
 memory_consolidate()
 ```
 
-This is also run automatically at **02:30 AM** daily. Use this tool to trigger it on-demand (e.g. after a bulk import).
+The system also runs this automatically at **02:30 AM** daily. Use this tool to trigger it on demand, for example after a bulk import.
 
 **What it does**
 

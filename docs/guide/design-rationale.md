@@ -2,10 +2,10 @@
 
 Why amem is built the way it is, and what evidence each decision rests on.
 
-This page exists because "we chose X" is not useful on its own — the reasoning is
+This page exists because "we chose X" is not useful on its own. The reasoning is
 what lets you judge whether a decision still holds when your situation differs
-from ours. Where the evidence is published, it is cited. Where a decision is our
-own judgement, it says so.
+from ours. When evidence is published, we cite it. When a decision is our own
+judgement, we say so.
 
 > **Every figure below was checked against the source it is attributed to.**
 > Claims that could not be verified were removed rather than softened. See
@@ -26,9 +26,8 @@ pipeline is assembled matters far more than how capable the model driving it is.
 | For fact extraction, `gpt-4o-mini` (76.88%) vs `gpt-4o` (78.96%) on LongMemEval-S — a **2.1 point** gap | TiMem, [arXiv:2601.02845](https://arxiv.org/abs/2601.02845), ACL 2026 Findings |
 | `gpt-4o` used as a raw long-context reader scores **60.0%**, *below* `gpt-4o-mini` inside a deterministic pipeline at **78.0%** | [arXiv:2606.01435](https://arxiv.org/abs/2606.01435) |
 
-The mem0 result is the sharpest of these: the *same* model got substantially
-better at memory by having a worse-designed step **removed**. Their own account of
-why is worth quoting, because it names the mechanism:
+The mem0 result is the sharpest: removing a worse-designed step gave the *same*
+model substantially better memory. Their account names the mechanism:
 
 > That reconciliation step was slow, and it was where context got destroyed.
 
@@ -36,14 +35,14 @@ why is worth quoting, because it names the mechanism:
 
 > Deletes sometimes removed information that would be relevant later.
 
-**Consequence for amem:** "requires a strong model" is treated as a design smell.
+**Consequence for amem:** amem treats "requires a strong model" as a design smell.
 It is usually a way of paying to paper over a weak pipeline.
 
 ## The exception: detecting contradiction
 
 Architecture does not dominate *everywhere*. There is one task where model
-capability produces a large, real gap — deciding whether a new fact **contradicts**
-a stored one, as opposed to merely adding to it.
+capability produces a large, real gap. That task is deciding whether a new fact
+**contradicts** a stored one, as opposed to merely adding to it.
 
 | Task | Cheap model | Strong model |
 | :--- | :--- | :--- |
@@ -63,26 +62,26 @@ backbone. **A-MEM — the architecture amem is derived from — scored 5.1%**, w
 Zep at 6.0%, mem0 at 8.3%, and LightMem highest at 17.8%.
 
 We include this because it is the most important number on this page for
-understanding amem's roadmap. It says the *foundational* design has a real blind
-spot for memories that have quietly gone stale, and that the blind spot is not
-something a cheap model can be asked to cover.
+understanding amem's roadmap. The *foundational* design has a real blind spot for
+memories that have quietly gone stale. A cheap model cannot cover that blind spot.
 
 ### But architecture still wins, even here
 
 The same STALE paper reports that an explicit adjudication design (CUPMem) lifts
-that 8.7% to **68.0%** — above the best raw frontier model's 55.2%. A purpose-built
-structure beat a bigger model at the one task bigger models were winning.
+that 8.7% to **68.0%**. This is above the best raw frontier model's 55.2%. A
+purpose-built structure beat a bigger model at the one task bigger models were
+winning.
 
-Relatedly, reasoning models are **not** a general answer: `o4-mini` underperforms
-`gpt-4o` on multi-hop conflict inside a rigid pipeline (43.2% vs 51.5%). Extra
-reasoning does not help when the pipeline gives it nowhere to go.
+Reasoning models are **not** a general answer: `o4-mini` underperforms `gpt-4o`
+on multi-hop conflict inside a rigid pipeline (43.2% vs 51.5%). Extra reasoning
+does not help when the pipeline gives it nowhere to go.
 
 ## How this shapes amem
 
 ### 1. Cheap-tier capable is a requirement, not a compromise
 
 amem must run well on a small, fast, locally-hostable model. That is the floor.
-A stronger model may raise the ceiling, but is never required. This follows
+A stronger model can raise the ceiling, but it is never required. This follows
 directly from the evidence above: the write path's dominant cost is frequency, and
 its quality is mostly architecture-bound.
 
@@ -99,14 +98,13 @@ new memory
 ```
 
 Layers 1–2 absorb the majority of writes at zero LLM cost. What reaches layer 3 is
-the genuinely hard remainder — which is exactly the population a cheap model is
-worst at. That tension is handled by the next decision rather than by buying a
-larger model.
+the genuinely hard remainder. This is exactly the population a cheap model is
+worst at. The next decision handles that tension, not a larger model.
 
 ### 3. A destructive update must prove it has the right target
 
 The CRUD step picks a memory to update from a numbered list. An **in-range but
-wrong** index is the one silent, unrecoverable failure in the write path: it is a
+wrong** index is the one silent, unrecoverable failure in the write path. It is a
 valid position, usually a note you own, so nothing structural catches it.
 
 This is a documented failure class, not a hypothetical. Memory-R1
@@ -133,7 +131,7 @@ The asymmetry is the whole point: a false positive costs a duplicate, which
 consolidation can merge. A false negative destroys a memory, which nothing can
 recover. See [CRUD update safety](/reference/configuration#crud-update-safety).
 
-We follow Zep's principle here rather than hard deletion — its temporal graph
+We follow Zep's principle here rather than hard deletion. The temporal graph
 ([arXiv:2501.13956](https://arxiv.org/abs/2501.13956)) marks superseded facts
 instead of removing them:
 
@@ -145,14 +143,14 @@ amem's `DELETE` is likewise a soft delete (`is_active: false`).
 
 ### 4. Parsing assumes an imperfect model, because that is the target
 
-Because any OpenAI-compatible endpoint is supported, amem is routinely pointed at
+amem supports any OpenAI-compatible endpoint. Users routinely point it at
 open-weight and reasoning models that wrap output in `<think>` blocks or chat
-special tokens. Those are stripped before JSON parsing, and a preamble before the
-JSON object is tolerated.
+special tokens. amem strips those before JSON parsing and tolerates a preamble
+before the JSON object.
 
-This is not cosmetic. Before it was fixed, a *valid* response from such a model
-would fail to parse and silently fall back to a blank result, with nothing in the
-logs to distinguish it from a genuine model failure.
+This is not cosmetic. Before this fix, a *valid* response from such a model
+would fail to parse and silently fall back to a blank result. Nothing in the
+logs distinguished it from a genuine model failure.
 
 ## What we deliberately did not do
 
@@ -167,13 +165,13 @@ logs to distinguish it from a genuine model failure.
 ### Why not GGUF
 
 Running embeddings through `@huggingface/transformers` means only models with an
-ONNX export are usable, and that constraint costs real quality — the strongest
-Chinese retrieval models either have no ONNX at all or publish fp32-only files too
-large to load. `node-llama-cpp` and the GGUF ecosystem would lift it. We looked
+ONNX export are usable. That constraint costs real quality: the strongest Chinese
+retrieval models either have no ONNX at all or publish fp32-only files too large
+to load. `node-llama-cpp` and the GGUF ecosystem would lift it. We looked
 properly and stayed put, for three reasons.
 
 **The model that motivated the switch does not work there.** GGUF's appeal was
-`Qwen3-Embedding-4B` — C-MTEB retrieval 77.03, and 2.5 GB at Q4_K_M against 16.1 GB
+`Qwen3-Embedding-4B`: C-MTEB retrieval 77.03, and 2.5 GB at Q4_K_M against 16.1 GB
 for the fp32-only ONNX. But it fails past 512 tokens under `node-llama-cpp`
 (`Failed to get embeddings for token 512`,
 [QwenLM/Qwen3-Embedding#35](https://github.com/QwenLM/Qwen3-Embedding/issues/35)),
@@ -185,25 +183,25 @@ for GGUF leaned on Metal on Apple Silicon, against ONNX being CPU-only. ONNX is 
 CPU-only: `onnxruntime-node`'s macOS arm64 binary links `CoreML.framework` and
 exports `OrtSessionOptionsAppendExecutionProvider_CoreML`, and Transformers.js
 accepts `device: 'coreml'` and `device: 'webgpu'` on Node. It defaults to `cpu`,
-and amem never passed a device — so we were comparing a rival's best case against
+and amem never passed a device. We were comparing a rival's best case against
 our own untouched default.
 
 **GGUF gives up controls that fail silently when lost.** `node-llama-cpp` exposes
-no pooling configuration; it reads pooling from the GGUF's metadata, which
+no pooling configuration. It reads pooling from the GGUF's metadata, which
 community conversions often omit. Getting that wrong produces vectors, not errors.
-It is also ESM-only and cannot be inlined, where the plugin ships as a single CJS
-bundle, and it replaces download-by-model-name with a user-supplied path to a
+It is also ESM-only and cannot be inlined, but the plugin ships as a single CJS
+bundle. It replaces download-by-model-name with a user-supplied path to a
 multi-gigabyte file.
 
 Not settled, just decided for now. Revisit when #35 is fixed and an official GGUF
-with correct pooling metadata exists — and measure `coreml` and `webgpu` on the
-ONNX side first, because that is the cheaper experiment and it has never been run.
+with correct pooling metadata exists. Measure `coreml` and `webgpu` on the ONNX
+side first, because that is the cheaper experiment and it has never been run.
 
 ## Evidence quality
 
-Every source cited here was fetched and checked: that the identifier resolves,
+We fetched and checked every source cited here: that the identifier resolves,
 that the title is what we say it is, and that the specific figures appear in the
-text. That process changed four things and removed one claim entirely:
+text. That process removed one claim and corrected two more:
 
 - A widely-repeated latency figure attributed to the Zep paper **does not appear in
   it** and was dropped.
@@ -214,10 +212,10 @@ text. That process changed four things and removed one claim entirely:
 
 **What this does not establish.** These are other people's published results on
 their own benchmarks. They are not measurements of amem. amem's own regression
-numbers are in [Smoke Test Results](/reference/smoketest), and the tier question
-specifically — which model is *sufficient* — has not been measured on amem across
-model tiers. Where this page reasons from published results to an amem decision,
-that inference is ours.
+numbers are in [Smoke Test Results](/reference/smoketest). The tier question
+(which model is *sufficient*) has not been measured on amem across model tiers.
+Where this page reasons from published results to an amem decision, that inference
+is ours.
 
 ## References
 

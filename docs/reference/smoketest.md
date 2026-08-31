@@ -1,8 +1,8 @@
 # Smoke Test Results
 
-Internal regression test suite (`amem-smoketest`) — 31 QA pairs across 8 categories, evaluated with `gemini-3.5-flash-low` as write-side LLM.
+The `amem-smoketest` suite contains 31 QA pairs across 8 categories. It uses `gemini-3.5-flash-low` as the write-side LLM.
 
-> Smoke test is a **regression test**, not a benchmark. The dataset is self-authored and scores are not directly comparable across implementations. The purpose is to verify retrieval quality does not degrade between versions.
+> The smoke test is a **regression test**, not a benchmark. The dataset is self-authored. You cannot directly compare scores across implementations. The purpose is to verify that retrieval quality does not degrade between versions.
 
 ---
 
@@ -27,7 +27,7 @@ Internal regression test suite (`amem-smoketest`) — 31 QA pairs across 8 categ
 
 ## BFS ablation
 
-The 2-hop BFS graph expansion is tested in isolation using bfs + multihop categories (10 questions):
+This ablation tests the 2-hop BFS graph expansion in isolation using bfs and multihop categories (10 questions):
 
 | | BFS OFF | BFS ON | Delta |
 |:---|:---:|:---:|:---:|
@@ -41,11 +41,11 @@ BFS provides the largest single improvement of any feature in the retrieval pipe
 
 | Category | What it tests |
 |----------|--------------|
-| **fact** | Direct factual recall (e.g. account IDs, registration numbers) |
+| **fact** | Direct factual recall (for example, account IDs, registration numbers) |
 | **temporal** | Time-ordered facts where older versions should be superseded |
 | **bfs** | Multi-note graph traversal — answer requires following link edges |
-| **multihop** | Two independent facts that must be joined to answer (e.g. company → registrar → contact email) |
-| **semantic** | Paraphrased queries that don't share keywords with stored content |
+| **multihop** | Two independent facts that must be joined to answer (for example, company → registrar → contact email) |
+| **semantic** | Paraphrased queries that do not share keywords with stored content |
 
 ## Running the smoke test
 
@@ -54,7 +54,7 @@ cd amem-smoketest
 node run_smoketest.mjs
 ```
 
-By default the smoke test uses `gemini-3.5-flash-low` for write-side LLM operations and `gemini-pro-agent` as judge. Override with:
+By default, the smoke test uses `gemini-3.5-flash-low` for write-side LLM operations and `gemini-pro-agent` as judge. To override, run:
 
 ```bash
 AMEM_LLM_MODEL=claude-sonnet-4-6 node run_smoketest.mjs

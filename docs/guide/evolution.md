@@ -2,9 +2,9 @@
 
 ## Evolution Mechanism
 
-Unlike flat memory systems that silently overwrite existing notes, openclaw-amem treats memory as **living knowledge that evolves over time**.
+Unlike flat memory systems that silently overwrite existing notes, openclaw-amem tracks how each memory changes over time.
 
-When new content lands in the 0.72–0.85 cosine similarity zone with an existing note, it is flagged `pending_merge=true` and routed through an **LLM evolution judgment** at `agent_end` instead of being force-merged or silently accepted.
+When new content falls within the 0.72–0.85 cosine similarity zone with an existing note, the system flags it `pending_merge=true`. The system routes it through an **LLM evolution judgment** at `agent_end`, not a force-merge or silent acceptance.
 
 ### Four evolution paths
 
@@ -19,7 +19,7 @@ When new content lands in the 0.72–0.85 cosine similarity zone with an existin
 
 - `evolution_history` gives a full audit trail: you can answer "when did this memory change?"
 - `conflict` flags surface contradictory facts for human review instead of silently picking one
-- This is the key differentiator from mem0-style systems, which replace or append without tracking the relationship between old and new
+- This differs from mem0-style systems, which replace or append without tracking the relationship between old and new content
 
 ### References
 
@@ -35,7 +35,7 @@ When new content lands in the 0.72–0.85 cosine similarity zone with an existin
 
 Every `memory_add` call passes through `checkQuality()` before any LLM or embedding work:
 
-- **Content under 10 characters** → rejected with an error (e.g. "OK", "明白", "好的")
+- **Content under 10 characters** → rejected with an error (for example "OK", "明白", "好的")
 - **Contains temporal signal words** (`待跑`, `等确认`, `昨日`, `明天完成`) → written with `ephemeral: true` flag
 
 ### Periodic quality scan
@@ -48,4 +48,4 @@ The `memory_quality_scan` tool (or `scanLowQuality()` in code) scans the full me
 | `expired_ephemeral` | `ephemeral: true` and written more than 7 days ago |
 | `pending_conflict` | `conflict: true` — awaiting human review |
 
-Flagged entries are identified for human review via the `memory_quality_scan` tool.
+The `memory_quality_scan` tool identifies flagged entries for human review.

@@ -22,7 +22,7 @@ pnpm -r test               # Vitest — integration tests need Qdrant :6333 + AN
 
 ## Test coverage
 
-Test suite is under reconstruction. See [GitHub Issues](https://github.com/amemhq/amem/issues) for progress.
+The test suite is under reconstruction. See [GitHub Issues](https://github.com/amemhq/amem/issues) for progress.
 
 ## Project structure
 

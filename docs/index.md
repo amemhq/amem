@@ -45,7 +45,7 @@ features:
 
 ## Install the OpenClaw plugin
 
-The fastest way to try amem today is the **openclaw-amem** plugin — the `amem-core` engine is bundled inside, so there is nothing else to install.
+The fastest way to try amem today is the **openclaw-amem** plugin — it bundles the `amem-core` engine, so there is nothing else to install.
 
 ::: code-group
 
@@ -59,7 +59,7 @@ openclaw plugins install openclaw-amem
 
 :::
 
-Point OpenClaw's `memory` slot at `openclaw-amem` and your agent remembers across sessions — linking, evolving, and consolidating on its own. → **[Full installation guide](/guide/installation)**
+Point OpenClaw's `memory` slot at `openclaw-amem`. Your agent then remembers across sessions — linking, evolving, and consolidating on its own. → **[Full installation guide](/guide/installation)**
 
 ## The amem stack
 
@@ -73,10 +73,10 @@ amem is a monorepo you can adopt one piece at a time.
 
 ## Grounded in research
 
-openclaw-amem implements **[A-MEM: Agentic Memory](https://arxiv.org/abs/2502.12110)** (NeurIPS 2025) — memory that constructs, links, and evolves notes like a Zettelkasten instead of dumping flat vector rows. Embeddings run locally via Transformers.js and are stored in Qdrant. **No Python, no external embedding API.** MIT-licensed.
+openclaw-amem implements **[A-MEM: Agentic Memory](https://arxiv.org/abs/2502.12110)** (NeurIPS 2025) — memory that constructs, links, and evolves notes like a Zettelkasten instead of dumping flat vector rows. Embeddings run locally via Transformers.js. Qdrant stores them. **No Python, no external embedding API.** MIT-licensed.
 
 <div class="tip custom-block" style="padding-top: 8px">
 
-In a hurry? Jump straight to the **[Quick Start](/guide/quick-start)**.
+If you are in a hurry, go to the **[Quick Start](/guide/quick-start)**.
 
 </div>
