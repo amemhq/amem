@@ -64,7 +64,13 @@ function register(api: {
   if (convBlocked) logger.warn(BLOCKED_WARNING_LOG)
 
   // Preserve the plugin's existing on-disk data location (evo counter + consolidation logs).
-  configure({ dataDir: path.join(os.homedir(), '.openclaw') })
+  // `warn` is the important half: the engine's default is stderr, and the gateway
+  // runs under launchd with StandardErrorPath=/dev/null, so without this every
+  // recovered failure it reports is discarded before anything can read it.
+  configure({
+    dataDir: path.join(os.homedir(), '.openclaw'),
+    warn: (msg: string) => logger.warn(msg),
+  })
 
   // Story 35: let openclaw.json pick the model without setting env vars. Env
   // vars still win, and an unset key falls through to the engine's default, so

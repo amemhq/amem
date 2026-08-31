@@ -4,6 +4,23 @@ What a release means if you use the plugin. This is what ClawHub shows on the
 listing. [CHANGELOG.md](./CHANGELOG.md) is the same releases described at the
 engine level, generated from changesets, and stays that way for npm.
 
+## 2.1.2
+
+**When memory stops working, the log now says so.** The engine wrote its
+warnings to a channel the gateway throws away, so nothing reached the log file.
+A broken LLM endpoint looked exactly like a quiet day.
+
+That gap hid a real one. If the engine cannot reach the LLM, it still saves the
+memory, but with no keywords, no tags and no summary — and nothing said so. On
+one store the hook ran 684 times across 11 days and saved nothing at all,
+because the provider setting was wrong. The log gave no sign of it either way.
+
+The startup notice that asks you to migrate an old store went the same way. It
+is the only warning you get that your memories are being truncated, and under
+the gateway you never got it.
+
+Nothing to configure. Update the plugin and restart the gateway.
+
 ## 2.1.1
 
 **Search scores mean something on every row now.** A memory found by its wording

@@ -34,6 +34,7 @@ import {
 import { encode, getEmbeddingDim, getEmbeddingModel } from './embedding.js'
 import { llmConstructNote } from './llm.js'
 import { buildEmbedText } from './memory.js'
+import { warn as engineWarn } from './config.js'
 
 export interface MigrateResult {
   /** Points found in the source. */
@@ -72,7 +73,7 @@ export async function migrateCollection(opts: {
   const refreshFields = opts.refreshFields !== false
   const dryRun = opts.dryRun !== false
   const log = opts.logger?.info ?? ((m: string) => console.log(m))
-  const warn = opts.logger?.warn ?? ((m: string) => console.warn(m))
+  const warn = opts.logger?.warn ?? engineWarn
 
   if (from === to) throw new Error(`migrate: source and target are the same collection ("${from}")`)
 
