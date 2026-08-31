@@ -18,7 +18,7 @@ import * as path from 'path'
 
 let _dataDir = process.env.AMEM_DATA_DIR || path.join(os.homedir(), '.amem')
 
-let _warn: (msg: string) => void = (msg) => console.error(msg)
+let _warn: (msg: string) => void = (msg) => console.warn(msg)
 
 export function configure(opts: { dataDir?: string; warn?: (msg: string) => void }): void {
   if (opts.dataDir) _dataDir = opts.dataDir

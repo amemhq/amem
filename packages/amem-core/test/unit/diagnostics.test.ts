@@ -39,7 +39,7 @@ async function fresh() {
 describe('engine diagnostics sink', () => {
   it('defaults to stderr, which is what a CLI wants', async () => {
     const { llm } = await fresh()
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     anthropicCreate.mockRejectedValueOnce(new Error('boom'))
 
     expect(await llm.llmCall('hi')).toBeNull()
@@ -49,7 +49,7 @@ describe('engine diagnostics sink', () => {
   it('sends a failed LLM call to a host that claims it, and not to stderr', async () => {
     const { config, llm } = await fresh()
     const sink = vi.fn()
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     config.configure({ warn: sink })
     anthropicCreate.mockRejectedValueOnce(new Error('404 /v1/v1/messages'))
 
