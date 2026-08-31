@@ -19,6 +19,13 @@ The startup notice that asks you to migrate an old store went the same way. It
 is the only warning you get that your memories are being truncated, and under
 the gateway you never got it.
 
+**A turn that fails and a turn with nothing to save no longer look the same.**
+Some failures wrote no message at all, so fixing the channel alone would not
+have shown them. The engine now says when a model replies with no text, when it
+replies with something the engine cannot read, and when a memory is about to be
+saved with none of its fields filled in. A turn the model reads and decides to
+save nothing from stays quiet, because that one is not a failure.
+
 Nothing to configure. Update the plugin and restart the gateway.
 
 ## 2.1.1

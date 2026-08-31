@@ -492,7 +492,14 @@ function register(api: {
           const msgs = event.messages || []
           const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
           const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
-          if (!lastUser || !lastAssistant) return
+          // Not the ordinary quiet turn — the hook fired on an exchange with a
+          // side missing, so there was nothing to consider storing.
+          if (!lastUser || !lastAssistant) {
+            logger.info(
+              `openclaw-amem: agent_end skipped — no ${!lastUser ? 'user' : 'assistant'} message in ${msgs.length} messages`
+            )
+            return
+          }
 
           const userText =
             typeof lastUser.content === 'string'

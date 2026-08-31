@@ -206,9 +206,15 @@ export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = '
   const isThinking = model.includes('gemini') || model.includes('pro-agent')
   const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
   try {
-    return provider === 'openai'
-      ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL)
-      : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL)
+    const text =
+      provider === 'openai'
+        ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL)
+        : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL)
+    // A 200 that carries no text. Every caller treats this exactly like a thrown
+    // error, so it is reported here rather than at each of them — otherwise the
+    // one failure mode that does not throw is the one nobody hears about.
+    if (text === null) warn(`[amem] ${provider} answered with no text (model ${model})`)
+    return text
   } catch (e) {
     warn(`[amem] LLM call failed: ${(e as Error).message}`)
     return null
@@ -377,7 +383,10 @@ confidence guide (Story 27):
 Text: ${content}`
 
   const raw = await llmCall(prompt, 400)
-  if (!raw)
+  if (!raw) {
+    // The note is still stored after this, with none of these fields filled in.
+    // Searching it later finds a note that matches almost nothing.
+    warn('[amem] note construction got nothing back; storing with no keywords, tags or context')
     return {
       keywords: [],
       tags: [],
@@ -387,6 +396,7 @@ Text: ${content}`
       topics: [],
       confidence: 'medium',
     }
+  }
 
   try {
     const data = parseJsonLoose(raw)
@@ -465,9 +475,15 @@ export async function llmCrudDecision(
     // Strip reasoning scaffolding first — this path extracts the array straight
     // from the response and would otherwise trip over a <think> block.
     const match = stripReasoning(raw).match(/\[.*\]/s)
-    if (!match) return []
+    if (!match) {
+      warn('[amem] llmCrudDecision found no array in the response; nothing from this turn is stored')
+      return []
+    }
     const parsed = JSON.parse(match[0])
-    if (!Array.isArray(parsed)) return []
+    if (!Array.isArray(parsed)) {
+      warn('[amem] llmCrudDecision parsed a non-array; nothing from this turn is stored')
+      return []
+    }
     const ops: MemoryOperation[] = []
     for (const item of parsed) {
       if (!item || typeof item !== 'object') continue
@@ -505,7 +521,10 @@ export async function llmShouldMerge(
 
   try {
     const data = parseJsonLoose(raw)
-    if (typeof data.shouldMerge !== 'boolean') return { shouldMerge: false }
+    if (typeof data.shouldMerge !== 'boolean') {
+      warn('[amem] llmShouldMerge got no boolean verdict; treating the pair as distinct')
+      return { shouldMerge: false }
+    }
     if (data.shouldMerge && typeof data.merged === 'string') {
       return { shouldMerge: true, merged: data.merged }
     }
@@ -532,7 +551,12 @@ export async function llmEvolutionJudge(
   // Story 42: EVOLVE/CONFLICT/EXPAND/NEW is literally contradiction
   // classification — the tier-sensitive call. Runs on `strong` when configured.
   const raw = await llmCall(prompt, 300, 'strong')
-  if (!raw) return { type: 'NEW' }
+  // 'NEW' is a verdict, and this path reaches it without the LLM ever answering:
+  // the pending_merge flag clears and the pair stays two notes.
+  if (!raw) {
+    warn('[amem] evolution judge got nothing back; defaulting the pair to NEW')
+    return { type: 'NEW' }
+  }
 
   try {
     const data = parseJsonLoose(raw)
@@ -645,9 +669,15 @@ export async function llmConflictScan(contents: string[]): Promise<ConflictPair[
     if (!raw) return []
     const cleaned = stripReasoning(raw)
     const match = cleaned.match(/\[[\s\S]*\]/)
-    if (!match) return []
+    if (!match) {
+      warn('[amem] llmConflictScan found no array in the response; this sweep reports no pairs')
+      return []
+    }
     const parsed = JSON.parse(match[0])
-    if (!Array.isArray(parsed)) return []
+    if (!Array.isArray(parsed)) {
+      warn('[amem] llmConflictScan parsed a non-array; this sweep reports no pairs')
+      return []
+    }
 
     const pairs: ConflictPair[] = []
     const seen = new Set<string>()
