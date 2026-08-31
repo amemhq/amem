@@ -4,7 +4,7 @@
 
 # amem
 
-Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not just accumulate. Qdrant + local Transformers.js + LLM, **no Python required**.
+Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not just accumulate. It uses Qdrant, local Transformers.js, and an LLM, with no Python required.
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License: MIT" /></a>
@@ -25,8 +25,8 @@ Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not
 
 ## Models
 
-Two tiers, because the calls are not equally hard. `fast` runs everything frequent:
-extraction, link judgement, the per-turn CRUD decision. `strong` runs only merge
+There are two tiers because the calls are not equally hard. The `fast` tier runs everything frequent:
+extraction, link judgement, and the per-turn CRUD decision. The `strong` tier runs only merge
 adjudication and contradiction classification.
 
 | tier | env | plugin config |
@@ -34,17 +34,17 @@ adjudication and contradiction classification.
 | fast | `AMEM_LLM_MODEL` | `llmModel` |
 | strong | `AMEM_LLM_STRONG_MODEL` | `llmStrongModel` |
 
-`strong` is optional and falls back to `fast` field by field, so setting only
-`llmStrongModel` keeps the same provider and endpoint with a better model, and
-setting all three `llmStrong*` fields runs the tiers on separate backends — a
-local Ollama for `fast`, a hosted API for `strong`. Set none and it behaves as a
-single-model install. There is no built-in `strong` default: an upgrade never
-starts spending more on its own.
+`strong` is optional and falls back to `fast` field by field. If you set only
+`llmStrongModel`, you keep the same provider and endpoint with a better model. If
+you set all three `llmStrong*` fields, the tiers run on separate backends — a
+local Ollama for `fast`, a hosted API for `strong`. If you set none, the system
+behaves as a single-model install. There is no built-in `strong` default: an
+upgrade never starts spending more on its own.
 
-The split is worth the config because the gap is uneven. Extraction differs about
-2 points between a cheap model and a strong one; contradiction detection differs
-17–21, and implicit contradictions collapse from 55% to 8.7%. Sources and the
-rest of the reasoning: [Design Rationale](https://amem.owo.lc/guide/design-rationale).
+The split is worth the additional configuration because the gap is uneven. Extraction differs about
+2 points between a cheap model and a strong one. Contradiction detection differs
+17–21, and implicit contradictions collapse from 55% to 8.7%. For sources and the
+rest of the reasoning, see [Design Rationale](https://amem.owo.lc/guide/design-rationale).
 
 ## Develop
 
@@ -58,7 +58,7 @@ pnpm -r test                 # vitest — integration tests need Qdrant on :6333
 pnpm docs:dev                # run the docs site locally
 ```
 
-Publishing is automated via [Changesets](https://github.com/changesets/changesets) + GitHub Actions.
+[Changesets](https://github.com/changesets/changesets) and GitHub Actions automate publishing.
 
 ## License
 

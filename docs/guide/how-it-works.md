@@ -61,7 +61,7 @@ memory_search(query)
 
 ## Temporal invalidation
 
-When a memory is updated or contradicted, the old note is marked `is_active: false` and excluded from all future searches via Qdrant payload filtering. No data is ever hard-deleted — the full history is preserved.
+When a memory is updated or contradicted, amem marks the old note `is_active: false` and excludes it from all future searches via Qdrant payload filtering. amem never hard-deletes data. amem preserves the full history.
 
 ## Daily consolidation
 
@@ -72,7 +72,7 @@ At **02:30 AM** (in-process scheduler), the plugin:
 3. Merges duplicates into a single unified note
 4. Cascades all link references from soft-deleted notes to the merged note
 
-This prevents memory bloat from semantically redundant facts accumulated over days.
+This process prevents memory bloat from semantically redundant facts that accumulate over days.
 
 ## Dedup layers
 
@@ -84,7 +84,7 @@ Every `memory_add` call passes through three dedup layers before reaching Qdrant
 | L2 | Vector similarity | ≥ 0.85 | UPDATE existing note |
 | L2.5 | Vector similarity | 0.72 ≤ s < 0.85 | Write + flag `pending_merge=true` |
 
-`pending_merge` notes are processed by the `agent_end` hook via LLM evolution judgment. See [Evolution & Quality](/guide/evolution) for details.
+The `agent_end` hook processes `pending_merge` notes via LLM evolution judgment. See [Evolution & Quality](/guide/evolution) for details.
 
 ## Agent isolation
 
@@ -93,7 +93,7 @@ openclaw-amem enforces per-agent memory namespacing. Every note carries `owner`,
 - **Private** (default): `readers = [agentId]` — only the writing agent can retrieve this note.
 - **Shared**: `agent_id = "shared"`, `readers = ["*"]` — all agents see this note in search results.
 
-Consolidation is scoped per agent. `dev`'s consolidation pass only considers `agent_id = "dev"` notes; shared notes and other agents' private notes are never modified.
+amem scopes consolidation per agent. The `dev` consolidation pass considers only `agent_id = "dev"` notes. amem never modifies shared notes or other agents' private notes.
 
 See [Agent Isolation](/guide/agent-isolation) for full details.
 
@@ -101,7 +101,7 @@ See [Agent Isolation](/guide/agent-isolation) for full details.
 
 If the `agent_end` hook is silently blocked by OpenClaw's security policy (missing `allowConversationAccess=true`), the plugin detects this automatically:
 
-- The plugin reads the hook configuration at startup and warns immediately if write-back is blocked — decided from config rather than by waiting to see whether the hook ever fires.
-- Every `memory_search` result will include a visible warning notice so you see it directly in the agent's replies.
+- The plugin reads the hook configuration at startup. If write-back is blocked, the plugin warns immediately. It makes this decision from the configuration, not by waiting to see whether the hook ever fires.
+- Every `memory_search` result includes a visible warning notice in the agent's replies.
 
-This prevents the silent failure mode where automatic write-back stops working without any visible indication.
+This check prevents the silent failure mode where automatic write-back stops working without any visible indication.

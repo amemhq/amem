@@ -1,22 +1,22 @@
 # Agent Isolation
 
-openclaw-amem gives every OpenClaw agent its own private memory namespace. This page explains how isolation works, how shared memory is published, what the access fields mean, how to configure Mode A vs Mode B, and what the security and architectural rationale is.
+openclaw-amem gives every OpenClaw agent its own private memory namespace. This page explains how isolation works, how shared memory is published, what the access fields mean, how to configure Mode A vs Mode B, and the rationale for security and architecture.
 
 ---
 
 ## Introduction
 
-In a multi-agent OpenClaw setup — for example, `main` (your daily driver) and `dev` (a sandboxed coding assistant) — each agent accumulates memories about its own work context. Without isolation, memories from `main` would pollute `dev`'s retrieval results and vice versa. More critically, a compromised or misbehaving agent could read private information stored by another agent through shared memory poisoning ([arXiv:2604.16548](https://arxiv.org/abs/2604.16548)).
+In a multi-agent OpenClaw setup — for example, `main` (your daily driver) and `dev` (a sandboxed coding assistant) — each agent accumulates memories about its own work context. Without isolation, memories from `main` will pollute `dev`'s retrieval results and vice versa. More critically, a compromised or misbehaving agent can read private information stored by another agent through shared memory poisoning ([arXiv:2604.16548](https://arxiv.org/abs/2604.16548)).
 
-openclaw-amem addresses this with an **isolation-by-default** model: every memory written by an agent is private to that agent unless explicitly published to the `shared` scope.
+openclaw-amem addresses this with an **isolation-by-default** model: every memory that an agent writes is private to that agent unless the agent explicitly publishes it to the `shared` scope.
 
 ### Research background
 
-The design is informed by:
+The following papers informed the design:
 
 - **[arXiv:2604.16548]** — *Security of Long-Term Memory in LLM Agents* (2026): Memory leakage in multi-agent systems most commonly occurs via shared memory stores. The paper argues isolation should be the **default**, with sharing as an explicit, auditable exception.
-- **[arXiv:2603.10062]** — *Multi-Agent Memory from a Computer Architecture Perspective* (2026): Models agent memory as an analogy to computer memory hierarchy — L1 cache (private), RAM (shared), NUMA (distributed). amem's Mode A maps to the L1/RAM split; Mode B maps to NUMA.
-- **[arXiv:2504.19413]** — *Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory*, ECAI 2025: Defines a four-dimensional scope model (user_id, agent_id, run_id, app_id). amem's scope model is a deliberate subset — see [Comparison with mem0](#comparison-with-mem0-scope-model).
+- **[arXiv:2603.10062]** — *Multi-Agent Memory from a Computer Architecture Perspective* (2026): The paper models agent memory as an analogy to the computer memory hierarchy — L1 cache (private), RAM (shared), NUMA (distributed). amem's Mode A maps to the L1/RAM split. Mode B maps to NUMA.
+- **[arXiv:2504.19413]** — *Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory*, ECAI 2025: The paper defines a four-dimensional scope model (user_id, agent_id, run_id, app_id). amem's scope model is a deliberate subset — see [Comparison with mem0](#comparison-with-mem0-scope-model).
 
 ---
 
@@ -24,7 +24,7 @@ The design is informed by:
 
 ### Private memory
 
-Private memory is the default. When an agent writes a note, it is tagged with that agent's `agent_id` and a `readers` list containing only that agent. No other agent can retrieve it.
+Private memory is the default. When an agent writes a note, the plugin tags it with that agent's `agent_id` and a `readers` list that contains only that agent. No other agent can retrieve it.
 
 **When to use private memory:** Always, unless you have a specific reason to share. Private memory is appropriate for:
 - Personal task context (`"Currently debugging auth middleware, focus on JWT expiry"`)
@@ -34,14 +34,14 @@ Private memory is the default. When an agent writes a note, it is tagged with th
 
 ### Shared memory
 
-Shared memory is written with `agent_id="shared"` and `readers=["*"]`. All agents that query memory will see shared notes mixed into their results.
+You write shared memory with `agent_id="shared"` and `readers=["*"]`. All agents that query memory will see shared notes mixed into their results.
 
 **When to use shared memory:** When information is genuinely useful to all agents:
 - Team-wide conventions (`"All API endpoints use snake_case JSON keys"`)
 - Shared credentials or configuration facts
 - Cross-agent context that needs to be consistent (`"Production deploy is frozen until 2026-06-20"`)
 
-The key design decision: amem uses an **explicit** `agent_id="shared"` marker rather than relying on the absence of an `agent_id` field. This makes shared notes immediately identifiable in the Qdrant database and prevents accidental leakage via missing fields. See [Design rationale](#why-explicit-shared-marker) below.
+The key design decision: amem uses an **explicit** `agent_id="shared"` marker rather than the absence of an `agent_id` field. This makes shared notes immediately identifiable in the Qdrant database and prevents accidental leakage via missing fields. See [Design rationale](#why-explicit-shared-marker) below.
 
 ### The three access fields
 
@@ -55,7 +55,7 @@ Every `MemoryNote` carries three access control fields:
 
 #### `owner`
 
-The `owner` field records which agent created the note. It is set at write time and never modified, even if the note is later evolved or updated. It provides an audit trail: you can always query Qdrant to see which agent produced which memories.
+The `owner` field records which agent created the note. The plugin sets it at write time and never modifies it, even if the note is later evolved or updated. It provides an audit trail: you can always query Qdrant to see which agent produced which memories.
 
 Example: A note written by `dev` always has `owner: "dev"`, even if `main` later reads it via shared access.
 
@@ -83,18 +83,18 @@ This means each agent sees only its own private notes plus notes in the shared s
 
 #### `writers`
 
-The `writers` field records which agents are authorized to modify (evolve, update, soft-delete) this note. Currently **schema-only**: the field is stored in Qdrant but not checked at write time. Enforcement is planned for Story 33.
+The `writers` field records which agents are authorized to modify (evolve, update, soft-delete) this note. Currently **schema-only**: the plugin stores the field in Qdrant but does not check it at write time. Story 33 will add enforcement.
 
-Example: A shared note written by `main` has `writers: ["main"]`, signaling intent that only `main` should modify it — but `dev` can currently update it without a hard error. This will change in Story 33.
+Example: A shared note written by `main` has `writers: ["main"]`. This signals that only `main` is the intended modifier, but `dev` can currently update it without a hard error. This will change in Story 33.
 
 ### Why explicit shared marker?
 
-mem0 ([arXiv:2504.19413]) uses an implicit convention: omitting `agent_id` from a memory entry means it is accessible to all agents. This creates a footgun — a bug that forgets to set `agent_id` accidentally creates a shared (leaky) memory.
+mem0 ([arXiv:2504.19413]) uses an implicit convention: omitting `agent_id` from a memory entry means it is accessible to all agents. This creates a problem: a bug that forgets to set `agent_id` accidentally creates a shared (leaky) memory.
 
-amem uses `agent_id="shared"` as an explicit, deliberate opt-in. The consequence:
+amem uses `agent_id="shared"` as an explicit opt-in. The consequences are:
 
 - You can `grep` or query Qdrant for `agent_id = "shared"` to audit all shared notes at any time
-- A bug that fails to set `agent_id` falls back to the empty-string or missing-field case, which is **not** treated as shared — it is treated as a malformed write and rejected or stored as private
+- A bug that fails to set `agent_id` falls back to the empty-string or missing-field case. The system does **not** treat this as shared. It treats it as a malformed write and rejects it or stores it as private.
 - Shared notes are visually distinct in Qdrant's web UI
 
 ---
@@ -124,11 +124,11 @@ Mode A is the right choice for:
 ### When to use Mode B
 
 Mode B is appropriate when:
-- You need **complete** physical separation (e.g., compliance or audit requirements)
+- You need **complete** physical separation (for example, compliance or audit requirements)
 - The `dev` agent must be fully sandboxed and must never see any `main` notes, even shared ones
 - You want separate Qdrant collections for independent backup or restore
 
-**Note:** In Mode B, shared notes written by `main` are NOT visible to `dev`. If you need cross-agent sharing, use Mode A.
+**Note:** In Mode B, `dev` does not see shared notes written by `main`. If you need cross-agent sharing, use Mode A.
 
 ---
 
@@ -156,7 +156,7 @@ Mode B is appropriate when:
 }
 ```
 
-All agents use the default `amem_notes` collection. The `agentId` field determines which agent's notes are private. Shared notes (`agent_id="shared"`) are visible to all agents via automatic filter inclusion.
+All agents use the default `amem_notes` collection. The `agentId` field determines which agent's notes are private. All agents can see shared notes (`agent_id="shared"`) because the filter includes them automatically.
 
 ### Mode B — dedicated collection per agent
 
@@ -186,7 +186,7 @@ All agents use the default `amem_notes` collection. The `agentId` field determin
 }
 ```
 
-When the `dev` agent is active, it reads from and writes to `amem_notes_dev` exclusively. The `main` agent continues to use `amem_notes`. No cross-collection queries are made.
+When the `dev` agent is active, it reads from and writes to `amem_notes_dev` exclusively. The `main` agent continues to use `amem_notes`. The system makes no cross-collection queries.
 
 ### Full `openclaw.json` example with multiple agents
 
@@ -237,16 +237,16 @@ When `main` calls `memory_add("vendor account")`:
    - `owner: "main"`
    - `readers: ["main"]`
    - `writers: ["main"]`
-2. The note is stored in Qdrant under `amem_notes` (Mode A) or `amem_notes_main` (if Mode B configured).
+2. The plugin stores the note in Qdrant under `amem_notes` (Mode A) or `amem_notes_main` (if Mode B is configured).
 3. When `dev` calls `memory_search("vendor account")`, the query filter `agent_id IN ["dev", "shared"]` excludes this note — `dev` never sees it.
 
 ### Writing a shared note
 
-Currently, shared notes are written via the internal `agent_id="shared"` scope parameter. A future user-facing API (e.g., `memory_add(text, scope="shared")`) is planned.
+Currently, you write shared notes via the internal `agent_id="shared"` scope parameter. A future user-facing API (for example, `memory_add(text, scope="shared")`) is planned.
 
 When a shared note is written:
 1. `agent_id: "shared"`, `owner: "<writing agent>"`, `readers: ["*"]`, `writers: ["<writing agent>"]`
-2. Stored in Qdrant in the shared collection (`amem_notes`).
+2. The plugin stores it in Qdrant in the shared collection (`amem_notes`).
 3. All agents' `searchMemory` calls include `agent_id IN [self, "shared"]`, so all agents retrieve this note.
 
 ### How `searchMemory` filters results (Mode A)
@@ -269,15 +269,15 @@ Every `searchMemory` query in Mode A appends a Qdrant payload filter:
 
 `is_active` is under `must_not` rather than `must`, which is not the same thing:
 notes written before the field existed have no `is_active` at all, and requiring
-`true` would hide them. Excluding `false` keeps them.
+`true` will hide them. Excluding `false` keeps them.
 
 This ensures:
-- Soft-deleted notes (`is_active: false`) are always excluded
-- Only the calling agent's private notes and globally shared notes are returned
+- The query always excludes soft-deleted notes (`is_active: false`)
+- The query returns only the calling agent's private notes and globally shared notes
 
 ### Mode B search (own collection only)
 
-In Mode B, the plugin targets the agent's dedicated collection directly. No `agent_id` filter is needed — the collection itself provides isolation. Shared notes from other agents' collections are not queried.
+In Mode B, the plugin targets the agent's dedicated collection directly. The plugin needs no `agent_id` filter — the collection itself provides isolation. The plugin does not query shared notes from other agents' collections.
 
 ---
 
@@ -285,15 +285,15 @@ In Mode B, the plugin targets the agent's dedicated collection directly. No `age
 
 ### Per-agent scoping
 
-The daily consolidation pass (02:30 AM in-process scheduler) is scoped per agent. When `main`'s consolidation runs, it queries only `agent_id = "main"` notes. When `dev`'s consolidation runs (if `dev` has its own consolidation schedule), it queries only `agent_id = "dev"` notes.
+The daily consolidation pass (02:30 AM in-process scheduler) runs per agent. When `main`'s consolidation runs, it queries only `agent_id = "main"` notes. When `dev`'s consolidation runs (if `dev` has its own consolidation schedule), it queries only `agent_id = "dev"` notes.
 
 ### Shared notes are excluded
 
-Notes with `agent_id = "shared"` are explicitly excluded from all agents' consolidation passes. This is intentional:
+All agents' consolidation passes explicitly exclude notes with `agent_id = "shared"`. This is intentional:
 
-1. **Ownership ambiguity** — Shared notes may have been written by `main` but are consumed by `dev`. Letting `dev`'s consolidation merge or modify them would violate the `owner` guarantee.
-2. **Stability** — Shared notes are intended to be stable reference facts. Automatic merging of shared notes by any agent could corrupt or silently alter information that other agents depend on.
-3. **writers enforcement (future)** — When Story 33 implements `writers` field enforcement, only the `owner` agent will be able to modify shared notes. Until then, excluding shared notes from consolidation provides equivalent protection.
+1. **Ownership ambiguity** — Shared notes can be written by `main` but consumed by `dev`. If `dev`'s consolidation merges or modifies them, it will violate the `owner` guarantee.
+2. **Stability** — Shared notes serve as stable reference facts. Merging shared notes automatically can corrupt or silently alter information that other agents depend on.
+3. **writers enforcement (future)** — When Story 33 implements `writers` field enforcement, only the `owner` agent will be able to modify shared notes. Until then, this exclusion provides equivalent protection.
 
 ### What consolidation does with each scope
 
@@ -325,7 +325,7 @@ Notes with `agent_id = "shared"` are explicitly excluded from all agents' consol
 | `readers` | ✅ Query filter | Story 32 | `agent_id IN [self, "shared"]` filter applied to all searches |
 | `writers` | ❌ Schema only | Story 32 | Stored in Qdrant but not checked at write/update/delete time |
 
-`writers` enforcement is planned for Story 33. When implemented, any write/evolve/delete operation against a note will first check that the calling agent appears in the note's `writers` list.
+Story 33 will add `writers` enforcement. When Story 33 is implemented, any write/evolve/delete operation against a note will first check that the calling agent appears in the note's `writers` list.
 
 ---
 
@@ -344,29 +344,29 @@ mem0 ([arXiv:2504.19413], ECAI 2025) defines memory scope across four orthogonal
 
 ### Why amem doesn't need `run_id` and `app_id`
 
-amem is a **single-user local** system. There is no multi-tenant SaaS context where multiple users or applications share one memory store. Therefore:
+amem is a **single-user local** system. There is no multi-tenant SaaS context where multiple users or applications share one memory store. As a result:
 
-- `user_id` — unnecessary; amem assumes a single human operator
-- `run_id` — unnecessary; amem treats the OpenClaw session as a continuous context, not isolated conversation runs. Consolidation already handles cross-session memory management.
-- `app_id` — unnecessary; amem is a dedicated plugin for OpenClaw only
+- `user_id` — unnecessary. amem assumes a single human operator.
+- `run_id` — unnecessary. amem treats the OpenClaw session as a continuous context, not isolated conversation runs. Consolidation already handles cross-session memory management.
+- `app_id` — unnecessary. amem is a dedicated plugin for OpenClaw only.
 
-`user_id` is in the long-term roadmap, to be implemented alongside an HTTP API layer for potential multi-user setups. It will require minimal changes — adding a `user_id` payload filter to Qdrant queries.
+`user_id` is in the long-term roadmap. The team plans to implement it alongside an HTTP API layer for potential multi-user setups. The only required change is a `user_id` payload filter added to Qdrant queries.
 
 ### Why explicit shared marker over mem0's implicit null-scoping
 
-mem0's convention: omitting `agent_id` from a memory entry makes it accessible to all agents (implicit shared).
+mem0's convention: when `agent_id` is omitted from a memory entry, all agents can access that entry (implicit shared).
 
 amem's convention: `agent_id="shared"` is an explicit opt-in (explicit shared).
 
 **The problem with implicit null-scoping:**
-- A bug that forgets to set `agent_id` accidentally creates a shared (and therefore leaky) memory
+- A bug that forgets to set `agent_id` accidentally creates a shared (and thus leaky) memory
 - You cannot distinguish "shared by design" from "shared by accident" in the database
 - Auditing shared notes requires querying for null/missing `agent_id`, which is awkward in Qdrant
 
 **amem's explicit marker:**
 - `grep agent_id:shared` or `filter: { key: "agent_id", match: { value: "shared" } }` gives a clean audit list
-- Missing `agent_id` is a write error or treated as private — never accidentally shared
-- Per [arXiv:2604.16548]: isolation-by-default, sharing is an explicit, auditable exception
+- Missing `agent_id` is a write error. The system treats it as private, never accidentally shared.
+- As [arXiv:2604.16548] states: isolation-by-default, sharing is an explicit, auditable exception
 
 ### Computer architecture analogy
 
@@ -389,14 +389,14 @@ Mode A implements the L1/RAM split: each agent has a private working set with a 
 [arXiv:2604.16548] identifies three primary memory leakage vectors in multi-agent LLM systems:
 
 1. **Cross-agent reads** — Agent B reads Agent A's private notes via a shared memory store
-2. **Shared memory poisoning** — A malicious or compromised agent writes adversarial content to the shared scope, affecting other agents' retrieval
+2. **Shared memory poisoning** — A malicious or compromised agent writes adversarial content to the shared scope and affects other agents' retrieval
 3. **Consolidation spillover** — An agent's consolidation pass accidentally modifies another agent's notes
 
 openclaw-amem addresses all three:
 
 1. **Cross-agent reads** — `agent_id` filter at query time prevents Agent B from reading Agent A's private notes. In Mode B, separate collections provide physical isolation.
-2. **Shared memory poisoning** — Currently mitigated by the quality gate (content < 10 chars rejected, ephemeral flagging). Future Story 33 `writers` enforcement will prevent unauthorized modification of shared notes.
-3. **Consolidation spillover** — Consolidation is scoped per agent; shared notes are excluded entirely.
+2. **Shared memory poisoning** — The quality gate currently mitigates this (content < 10 chars rejected, ephemeral flagging). Story 33 `writers` enforcement will prevent unauthorized modification of shared notes.
+3. **Consolidation spillover** — Consolidation runs per agent. The system excludes shared notes entirely.
 
 ### Isolation-by-default principle
 
@@ -406,12 +406,12 @@ This principle shapes every design decision in openclaw-amem's isolation model:
 - Private is the default note scope (no extra config needed)
 - Shared requires explicit `agent_id="shared"` (opt-in)
 - Consolidation excludes shared notes (conservative default)
-- `writers` enforcement is planned (progressive hardening)
+- Story 33 will add `writers` enforcement (progressive hardening)
 
 ### What is NOT yet protected
 
-- **`writers` enforcement** — Story 32 stores the `writers` field but does not enforce it. A `dev` agent could technically evolve or soft-delete a shared note written by `main`. Story 33 will add a hard check.
-- **Prompt injection via shared notes** — A compromised agent could write adversarial content into a shared note that manipulates another agent's behavior when retrieved. This is a known attack class ([arXiv:2604.16548] §4). Mitigation requires content validation at write time (future work).
+- **`writers` enforcement** — Story 32 stores the `writers` field but does not enforce it. A `dev` agent can technically evolve or soft-delete a shared note written by `main`. Story 33 will add a hard check.
+- **Prompt injection via shared notes** — A compromised agent can write adversarial content into a shared note that manipulates another agent's behavior when retrieved. This is a known attack class ([arXiv:2604.16548] §4). Mitigation requires content validation at write time (future work).
 
 ---
 
@@ -422,7 +422,7 @@ This principle shapes every design decision in openclaw-amem's isolation model:
 The `writers` field is currently schema-only. When Story 33 is implemented:
 
 - Any `updateMemory`, `evolveNote`, or `softDelete` call will first check `writers` includes the calling agent
-- Write attempts by unauthorized agents will return a `PERMISSION_DENIED` error
+- Unauthorized agents will receive a `PERMISSION_DENIED` error on write attempts
 - The consolidation loop will double-check `writers` before merging shared notes
 
 ### No cross-collection sharing in Mode B
@@ -437,11 +437,11 @@ Current `readers` options are:
 - `["<agentId>"]` — private (single agent)
 - `["*"]` — shared (all agents)
 
-A future fine-grained ACL (`readers: ["main", "dev"]` for selective sharing between specific agents) is possible without schema changes — only query filter logic would need updating. This is planned post-Story 33.
+A future fine-grained ACL (`readers: ["main", "dev"]` for selective sharing between specific agents) is possible without schema changes — only query filter logic will need updating. Implementation is planned for post-Story 33.
 
 ### `user_id` dimension
 
-amem is currently single-user. A `user_id` dimension is planned alongside an HTTP API layer for potential multi-user deployments. When added, it will be an additional Qdrant payload filter with no breaking changes to the existing `agent_id` isolation model.
+amem is currently single-user. The team plans a `user_id` dimension alongside an HTTP API layer for potential multi-user deployments. When the team adds it, it will be an additional Qdrant payload filter with no breaking changes to the existing `agent_id` isolation model.
 
 ---
 

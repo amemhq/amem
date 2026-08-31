@@ -4,7 +4,7 @@ amem embeds memories locally with [Transformers.js](https://huggingface.co/docs/
 on `onnxruntime-node`, in the same process as the agent. A model is usable here
 only if an **ONNX export** exists on HuggingFace. Models that only run through
 Python — sentence-transformers, FlagEmbedding, vLLM — are not listed on this page
-at all, however good their scores.
+at all, regardless of their scores.
 
 Set one with `AMEM_EMBED_MODEL`, giving the repo id of the **ONNX** export:
 
@@ -14,43 +14,43 @@ AMEM_EMBED_MODEL=Xenova/bge-m3
 
 The default is `Xenova/bge-m3` (1024-dim, 8192 tokens), which is what a store
 created from 2.0.0 onwards uses. Its ONNX is maintained by the author of
-Transformers.js itself, and it needs no query prefix — see [why it was
+Transformers.js itself. It needs no query prefix. See [why it was
 picked](#why-bge-m3-is-the-default).
 
 ::: warning Upgrading to 2.0.0 does not move your store
 A collection built before 2.0.0 keeps `Xenova/paraphrase-multilingual-MiniLM-L12-v2`
 (384-dim), because that is what its vectors are. amem detects this and says so on
-every startup. Nothing breaks; your memories keep working exactly as they did.
+every startup. Nothing breaks. Your memories keep working exactly as they did.
 
-But that model caps at **128 tokens**, so anything longer has always been
-truncated before it reached the vector — invisible to dense search, silently. It
-is also absent from the C-MTEB leaderboard entirely; it was never a retrieval
+But that model caps at **128 tokens**. Anything longer than 128 tokens was always
+truncated before it reached the vector, invisible to dense search. It
+is also absent from the C-MTEB leaderboard entirely. It was never a retrieval
 model. [Migrating](#changing-the-model-on-a-store-you-already-have) is the point
 of this release.
 :::
 
 ::: danger Changing this on an existing install is a breaking change
 Qdrant fixes a collection's vector size when the collection is created and cannot
-change it afterwards. Point `AMEM_EMBED_MODEL` at a model of a different width and
-startup fails with `EmbeddingDimensionMismatchError`; memory stays unusable until
+change it afterwards. If you point `AMEM_EMBED_MODEL` at a model of a different width,
+startup fails with `EmbeddingDimensionMismatchError`. Memory stays unusable until
 you migrate or change it back. Pick before you have data, or migrate deliberately.
 
-A model of the **same** width is caught too, by a different mechanism: amem records
-which model built a collection in Qdrant's collection metadata, and refuses to open
-it with a different one (`EmbeddingModelMismatchError`). Without that, swapping
-between two 1024-dimension models would pass every check and silently leave the
-store holding vectors from two different geometries. Needs Qdrant 1.16 or newer;
-on older servers only the width check applies.
+A model of the **same** width is also caught, by a different mechanism. amem records
+which model built a collection in Qdrant's collection metadata. It refuses to open
+the collection with a different model (`EmbeddingModelMismatchError`). Without that
+check, swapping between two 1024-dimension models passes every check and silently
+leaves the store holding vectors from two different geometries. This needs Qdrant
+1.16 or newer. On older servers, only the width check applies.
 :::
 
 ::: danger Mode B: migrate every collection before you restart
-One process embeds with one model. Open two collections that need different ones
-and the second raises `MixedEmbeddingModelsError` — memory is unusable for it until
-they agree.
+One process embeds with one model. If you open two collections that need different
+models, the second raises `MixedEmbeddingModelsError`. Memory is unusable for that
+collection until they agree.
 
-Mode A never hits this; there is only one collection. Mode B does, and in the
-ordinary way: migrate one per-agent collection, restart, and every collection you
-have not migrated yet now disagrees with the one you have. Migrate them all in one
+Mode A never hits this. There is only one collection. Mode B hits this in the
+expected way. Migrate one per-agent collection and restart. Every collection you
+have not migrated yet now disagrees with the migrated one. Migrate them all in one
 sitting, then restart:
 
 ```bash
@@ -59,19 +59,19 @@ for c in amem_alice amem_bob amem_main; do
 done
 ```
 
-then `--switch` each in turn. There is no partial state that works, so do not
+then `--switch` each in turn. Because there is no partial state that works, do not
 restart the agent in the middle.
 :::
 
 ## Which models actually work
 
-Five tiers, and the first question is always which tier a model is in — not how it
-scores. Everything below this section is organised by what a model is good at, and
-that only matters once it runs.
+There are five tiers. The first question is always which tier a model is in, not
+how it scores. The tables below organise models by what they are good at. That only
+matters once a model runs.
 
 ### 1. Run here, on a real store
 
-The only ones anybody has loaded and used in anger.
+These are the only ones that anybody loaded and used in production.
 
 | Model | dtype | Evidence |
 | :--- | :--- | :--- |
@@ -80,7 +80,7 @@ The only ones anybody has loaded and used in anger.
 
 ### 2. Loaded, but nothing runs on them
 
-Loads, produces sane vectors, never had a store behind it.
+It loads and produces valid vectors. No real store ran with it.
 
 | Model | dtype | Evidence |
 | :--- | :--- | :--- |
@@ -89,8 +89,8 @@ Loads, produces sane vectors, never had a store behind it.
 ### 3. Should work, never loaded
 
 The architecture is one Transformers.js maps and there is no `Dense` module for the
-export to drop — both checked by `node tools/audit-embedding-models.mjs` without
-downloading anything. Nothing is wrong with them. Nobody has run one.
+export to drop. The script `node tools/audit-embedding-models.mjs` checks both
+without downloading anything. Nothing is wrong with them. Nobody ran one.
 
 - `Alibaba-NLP/gte-modernbert-base`
 - `Snowflake/snowflake-arctic-embed-l`
@@ -113,13 +113,13 @@ downloading anything. Nothing is wrong with them. Nobody has run one.
 - `onnx-community/granite-embedding-small-english-r2-ONNX`
 
 Scores, dimensions and context length for each are in the tables further down. If
-you run one, please [say what happened](https://github.com/amemhq/amem/issues) —
-that is the only way anything moves to tier 1 or 2.
+you run one, [say what happened](https://github.com/amemhq/amem/issues). That is
+the only way anything moves to tier 1 or 2.
 
 ### 4. Load, but through a path nobody supports
 
 Transformers.js has no mapping for the architecture and falls back to a generic
-encoder, which it logs as unsupported. It works today; nothing promises the next
+encoder, which it logs as unsupported. It works today. Nothing promises the next
 version still does.
 
 - `Alibaba-NLP/gte-large-en-v1.5`
@@ -139,11 +139,11 @@ sounds, but not nothing.
 ### 5. Do not work
 
 [Not usable today](#not-usable-today) has the list and the specific blocker for
-each. Two ways in:
+each. There are two ways a model ends up here:
 
 - **A `Dense` module.** The ONNX export leaves a learned projection behind, so you
   get vectors nobody benchmarked, at a plausible width, with no error.
-  `Conan-embedding-v1` (1024 → 1792) and `LaBSE` (768 → 768) — the second one is
+  `Conan-embedding-v1` (1024 → 1792) and `LaBSE` (768 → 768). The second one is
   the same width in and out, so nothing anywhere can notice.
 - **No loadable export at all**, usually SafeTensors-only or too large.
 
@@ -152,12 +152,12 @@ of the runtime rather than the weights. See [Precision](#precision).
 
 ### How the tiers are decided
 
-Tiers 3, 4 and 5's first cause are **checked by script, without downloading**:
+A script checks the first cause for tiers 3, 4, and 5 without downloading anything:
 `modules.json` on the *upstream* model for a `Dense` module, and `config.json`'s
 `model_type` against the architectures the pinned Transformers.js maps. Run it
 yourself with `node tools/audit-embedding-models.mjs`.
 
-Tiers 1 and 2 cannot be scripted from metadata — they mean somebody loaded the
+Tiers 1 and 2 cannot be scripted from metadata. They mean somebody loaded the
 weights. That is why they are short.
 
 **A tier is per model *and* dtype.** They fail independently: `bge-m3` runs a real
@@ -165,61 +165,61 @@ store at fp32 and does not load at all at fp16.
 
 ## Why bge-m3 is the default
 
-Not because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
+bge-m3 is not the default because it tops a leaderboard. `Conan-embedding-v1` scores 11 points higher on
 C-MTEB and `Qwen3-Embedding-0.6B` scores 6 higher. Neither is a row you can act on:
 Conan turned out to be [unusable](#not-usable-today) and Qwen3 loads through a
 fallback. bge-m3 wins on the properties that decide whether a default is safe:
 
-- **8192 tokens.** The single biggest change from the old default's 128. Memories
+- **8192 tokens.** It is the single biggest change from the old default's 128 tokens. Memories
   longer than a couple of sentences now reach the vector whole.
 - **No prefix.** Qwen3 and e5 need `Instruct:` / `query:` prefixes that amem does
-  not send; omitting them costs 1–5% silently, which is a worse default than a
+  not send. Omitting them costs 1–5% silently, which is a worse default than a
   lower score honestly obtained.
-- **XLM-RoBERTa, with ONNX by the Transformers.js author.** Not a community export
-  that might carry a missing `Dense` head or an IR version the runtime rejects.
+- **XLM-RoBERTa, with ONNX by the Transformers.js author.** It is not a community
+  export. Community exports can carry a missing `Dense` head or an IR version the runtime rejects.
 - **MIT, and the export is the whole model.** Conan is CC BY-NC *and* its ONNX
   drops a `Dense(1024 → 1792)` head, so the score it is famous for is not a score
   you can get here. Qwen3's Apache-2.0 has an
   [open question](https://github.com/QwenLM/Qwen3-Embedding/issues/166) over its
   training data.
-- **Chinese and English both work.** 65.29 C-MTEB dense-only retrieval and 67.8
-  MIRACL over 18 languages, which is the actual target here.
+- **Chinese and English both work.** It scores 65.29 on C-MTEB dense-only retrieval
+  and 67.8 on MIRACL over 18 languages, which is the actual target here.
 
 The cost is size: 2.27 GB, against 118 MB for the model it replaces. 2.0.0 shipped
-an `fp16` default to halve that and it did not load — see [Precision](#precision).
+an `fp16` default to halve that and it did not load. See [Precision](#precision).
 
 `onnx-community/gte-multilingual-base` is the real alternative, and it is not the
-smaller one it was described as here. Both builds were loaded and checked:
+smaller one it was described as here. We loaded and checked both builds:
 
-- **fp32 works.** 768 dims, unit norm, and a near-synonym Chinese pair at 0.86
-  against 0.44 for an unrelated Chinese/English pair. 1.26 GB — *more* than bge-m3
-  costs, because amem's fp16 default covers its own model only.
+- **fp32 works.** It produces 768 dims with unit norm. A near-synonym Chinese pair
+  scores 0.86 against 0.44 for an unrelated Chinese/English pair. The fp32 file is
+  1.26 GB, which is *more* than bge-m3, because amem's fp16 default covers its own model only.
 - **fp16 does not load.** onnxruntime 1.24.3 aborts in `SimplifiedLayerNormFusion`
   on a node the fp16 conversion inserts. That was the only build smaller than
   bge-m3, so the size argument for gte is gone.
 
 It scores about 4.4 higher on C-MTEB. Against that: its architecture is `new`,
-which Transformers.js has no mapping for, so it runs through a generic fallback
-the library itself logs as unsupported, and working today is not working after an
-upgrade. See [what a fallback model risks](#what-a-fallback-model-risks) for what
-that actually costs — less than it sounds, but not nothing. The *default* stays on
-the natively-mapped model because a default should not ask that question of
-someone who never opened this page.
+which Transformers.js has no mapping for. It runs through a generic fallback that
+the library itself logs as unsupported. A model that works today can stop working
+after an upgrade. See [what a fallback model risks](#what-a-fallback-model-risks)
+for what that actually costs. The risk is less than it sounds, but not nothing.
+The *default* stays on the natively-mapped model. A default must not ask that
+question of someone who never opened this page.
 
 If size is the binding constraint and Chinese is all you need,
 `Xenova/bge-small-zh-v1.5` is 25 MB and native, at 61.77 and a 512-token window.
 
 ## Changing the model on a store you already have
 
-One command, run until it says it is done:
+Run one command until it says it is done:
 
 ```bash
 npx --package=@amemhq/core amem-migrate
 ```
 
-That migrates onto the current default. Set `AMEM_EMBED_MODEL` to go somewhere
-else, and `--from-collection` if this is not the store `AMEM_COLLECTION` names —
-per-agent collections need it.
+That migrates onto the current default. Set `AMEM_EMBED_MODEL` to migrate to a
+different model. Use `--from-collection` if this is not the store `AMEM_COLLECTION`
+names. Per-agent collections need it.
 
 The bare run downloads the model. It has to: the state it reports is the source's
 vector width against the target model's, and the only way to know the second is to
@@ -228,8 +228,7 @@ load it and measure. So the first `amem-migrate` of any kind pulls the whole mod
 
 ### How long it takes
 
-Three different bottlenecks, worth separating because only one of them scales with
-your store:
+There are three different bottlenecks. Only one of them scales with your store:
 
 | Phase | Bound by | Measured |
 | :--- | :--- | :--- |
@@ -242,29 +241,29 @@ with the agent still running.
 
 ### Stop the agent before `--apply`, not before this
 
-Nothing before `--apply` writes, so the long download costs you no downtime if you
-leave the agent up through it. Writing underneath a running agent is not dangerous
-— `--switch` refuses while the source has more notes than the target — but every
-memory written during the rebuild means another `--apply` round to catch up.
+Nothing before `--apply` writes to the store. You lose no downtime if you leave
+the agent running through the download. Writing underneath a running agent is not
+dangerous. `--switch` refuses while the source has more notes than the target. But
+every memory written during the rebuild means another `--apply` round to catch up.
 
 It reports where the store is and what comes next. `--apply` does the next step
-and is safe to interrupt — re-running picks up where it stopped, so a rebuild that
+and is safe to interrupt. Re-running picks up where it stopped, so a rebuild that
 died two thousand notes in does not start over. `--switch` is the last step: it
 puts the rebuilt store behind the name you already use, so **nothing in your
 configuration changes**.
 
 Only `--switch` is irreversible. It drops the pre-migration collection, because
-Qdrant will not put an alias over a name a real collection holds — and it refuses
-to do that unless the new store holds at least as much as the old one.
+Qdrant will not put an alias over a name a real collection holds. amem refuses to
+run `--switch` unless the new store holds at least as much as the old one.
 
 Re-embedding costs no LLM calls: content, keywords, tags and context are already
 in the payload, so it is local compute. The exception is notes written before the
-extraction pipeline filled those fields in, which get re-extracted.
+extraction pipeline filled those fields in. amem re-extracts those notes.
 `--no-refresh-fields` skips that and makes the whole thing offline, at the cost of
-those notes embedding from less text than they would today.
+those notes embedding from less text than is available today.
 
-Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
-`switchToMigrated()` are exported — sequence them however your deployment wants.
+If you use `@amemhq/core` directly rather than the plugin, `migrateCollection()`
+and `switchToMigrated()` are exported. Sequence them however your deployment needs.
 
 ## Reading the tables
 
@@ -276,10 +275,10 @@ Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
   types are not retrieval scores and are marked where used.
 - **not published** means exactly that. Nothing here is estimated or inferred.
 - Sizes are the real ONNX file sizes listed on HuggingFace, per dtype.
-- **Runtime** is the tier from [above](#which-models-actually-work), abbreviated:
-  `native` is tier 3 — the architecture is mapped and there is no `Dense` module —
-  and **`fallback`** is tier 4. Neither means anyone has loaded it; tiers 1 and 2
-  list the models that have been.
+- **Runtime** is the tier from [above](#which-models-actually-work), abbreviated.
+  `native` is tier 3, meaning the architecture is mapped and there is no `Dense`
+  module. **`fallback`** is tier 4. Neither means anyone has loaded it. Tiers 1 and
+  2 list the models that someone loaded.
 
 ## Chinese and English both matter
 
@@ -296,9 +295,9 @@ Using `@amemhq/core` directly rather than the plugin? `migrateCollection()` and
 | `onnx-community/embeddinggemma-300m-ONNX` | **fallback** | not published | 69.67ᵃ | 60.9 MTEB-multi | 768 | 2048 | 300M | Gemma⁶ | none |
 
 **MIRACL and MTEB-multi are different benchmarks** and their numbers are not
-comparable with each other. Only the two MIRACL figures — bge-m3's 67.8 and
-multilingual-e5-large-instruct's 65.7 — can be read against one another, and even
-then over 18 versus 16 languages.
+comparable with each other. Only the two MIRACL figures can be read against one
+another, and even then over 18 versus 16 languages. Those figures are bge-m3's
+67.8 and multilingual-e5-large-instruct's 65.7.
 
 1. Dense-only, averaged over 8 C-MTEB retrieval sub-tasks (arXiv:2402.03216).
 2. MIRACL, dense, nDCG@10, averaged over 18 languages (arXiv:2402.03216 Table 2).
@@ -309,44 +308,44 @@ then over 18 versus 16 languages.
 4. Apache-2.0 is declared, but [an open issue](https://github.com/QwenLM/Qwen3-Embedding/issues/166)
    questions MS MARCO (non-commercial) training data, unanswered as of July 2026.
 5. Tokenizer derives from Gemma 3 and carries Google's Gemma Terms of Use.
-6. Custom Google licence; requires accepting terms on HuggingFace before download.
+6. Custom Google licence. You must accept terms on HuggingFace before download.
 
 ᵃ Aggregate across all MTEB task types, **not** a retrieval score. Not comparable
 with the retrieval numbers in the other columns.
 
 ## Chinese-focused
 
-Higher Chinese scores, at the cost of English retrieval.
+These models have higher Chinese scores at the cost of English retrieval.
 
 | Model (ONNX repo) | Runtime | zh | Dim | Max seq | Params | Licence | Prefix |
 | :--- | :--- | ---: | ---: | ---: | ---: | :--- | :--- |
 | `Xenova/bge-base-zh-v1.5` | native | 69.49 | 768 | 512 | 102M | MIT | optional |
 | `Xenova/bge-small-zh-v1.5` | native | 61.77 | 512 | 512 | 24M | MIT | optional |
 
-`Conan-embedding-v1` used to have a row here, on the strength of the highest
-Chinese retrieval score on the page and an ONNX conversion that loads without
-complaint. Both are true and neither makes it usable: `modules.json` upstream ends
-in `Dense(1024 → 1792)`, the conversion covers the backbone only, and 76.67 was
+`Conan-embedding-v1` used to have a row here because it had the highest Chinese
+retrieval score on the page and an ONNX conversion that loads without complaint.
+Both are true and neither makes it usable. `modules.json` upstream ends in
+`Dense(1024 → 1792)`. The conversion covers the backbone only. The score 76.67 was
 measured on the 1792-dim output. Through Transformers.js you get 1024 dims, amem
 measures 1024, builds the collection at 1024, and never has cause to complain.
 It is in [Not usable today](#not-usable-today). Separately, it is CC BY-NC.
 
 ::: warning Conan-embedding-v2 is better in every way except the one that matters
-v2 is Apache-2.0 (v1 is not), scores **78.31** on C-MTEB retrieval and **66.40** on
-MTEB English retrieval — the best numbers on this page in both languages — and
+v2 is Apache-2.0 (v1 is not). It scores **78.31** on C-MTEB retrieval and **66.40**
+on MTEB English retrieval — the best numbers on this page in both languages. It
 takes 32768 tokens.
 
 It has **no ONNX export**: not in `TencentBAC/Conan-embedding-v2`, and no
 `onnx-community` or `Xenova` conversion exists. Its architecture is a custom
-`ConanEmbedModel` built on a from-scratch 1.4B LLM, so even an export would need
-Transformers.js to add support for it. Neither Conan is usable here — v1 for the
-Dense head, v2 for having no export at all.
+`ConanEmbedModel` built on a from-scratch 1.4B LLM. Even an export needs
+Transformers.js to add support for it. Neither Conan model is usable here: v1 for
+the Dense head, v2 for having no export at all.
 :::
 
 ## English-focused
 
-Chinese is unpublished for all of these because the backbones are English-only;
-expect Chinese retrieval to be poor. `all-MiniLM-L6-v2` scores **3.61** on
+Chinese is unpublished for all of these because the backbones are English-only.
+Chinese retrieval will be poor. `all-MiniLM-L6-v2` scores **3.61** on
 MTEB(cmn) retrieval, which is the shape of the whole band.
 
 | Model (ONNX repo) | Runtime | en | Dim | Max seq | Params | Licence | Prefix |
@@ -363,12 +362,12 @@ MTEB(cmn) retrieval, which is the shape of the whole band.
 
 ᵇ BEIR average rather than the MTEB 15-task retrieval set the others use.
 
-`gte-large-en-v1.5` and `gte-modernbert-base` are the two here that need no prefix
-and take 8192 tokens — the least trouble for the least loss.
+`gte-large-en-v1.5` and `gte-modernbert-base` need no prefix and take 8192 tokens.
+They are the least trouble for the least loss.
 
 ## Small and fast
 
-For weak machines, or when latency matters more than a few points.
+These models suit weak machines, or cases where latency matters more than a few points.
 
 | Model (ONNX repo) | zh | en | Dim | Max seq | Params | int8 size | Licence |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
@@ -383,10 +382,10 @@ retrieval in 52 MB.
 
 ## Large models
 
-Worth listing because some people have the machine for it — but see
-[what it costs](#what-a-model-costs-you) first, and note that **the ONNX exports
-for the largest models are fp32-only**, which is what actually rules them out
-rather than the parameter count.
+These models are worth listing because some people have the machine for them. See
+[what it costs](#what-a-model-costs-you) first. Note that **the ONNX exports for
+the largest models are fp32-only**, which is what actually rules them out rather
+than the parameter count.
 
 | Model (ONNX repo) | Runtime | zh | en | Smallest ONNX | RAM needed | Licence |
 | :--- | :--- | ---: | ---: | ---: | ---: | :--- |
@@ -397,7 +396,7 @@ rather than the parameter count.
 ::: warning Qwen3-Embedding-4B and 8B do not fit a normal machine
 Both publish **only an fp32 ONNX**. There is no fp16, q8 or q4 variant, so the
 usual "just run the quantized one" does not apply. 4B needs roughly 22 GB of free
-RAM and 8B roughly 36 GB — a 16 GB machine cannot load either.
+RAM and 8B needs roughly 36 GB. A 16 GB machine cannot load either.
 
 Quantized builds do exist (`Qwen/Qwen3-Embedding-4B-GGUF`, Q4_K_M at 2.5 GB) but
 they are **GGUF for llama.cpp**, which Transformers.js cannot load. If a quantized
@@ -406,12 +405,13 @@ ONNX export appears, these become the strongest Chinese models available here.
 
 ## Pooling
 
-A model produces one vector per token. Collapsing those into one sentence vector
-is either **`mean`** (average across tokens) or **`cls`** (take the first token),
-and a model only works properly with the one it was trained for.
+A model produces one vector per token. The pooling step collapses those into one
+sentence vector. The method is either **`mean`** (average across tokens) or
+**`cls`** (take the first token). A model only works properly with the one it was
+trained for.
 
-amem resolves this from the model name and falls back to `mean`. Override with
-`AMEM_EMBED_POOLING` if you use a model not listed here.
+amem resolves this from the model name and falls back to `mean`. If you use a
+model not listed here, override with `AMEM_EMBED_POOLING`.
 
 | Wants `cls` | Wants `mean` |
 | :--- | :--- |
@@ -421,12 +421,12 @@ amem resolves this from the model name and falls back to `mean`. Override with
 | | `all-MiniLM-L6-v2`, `all-mpnet-base-v2` |
 | | `nomic-embed-text-v1.5` |
 
-The split is by family, and it is not a rule of thumb — each entry was read from
+The split is by family and it is not a rule of thumb. Each entry was read from
 that model's own `1_Pooling/config.json`.
 
 ::: warning Getting this wrong does not fail
 Both modes return a normalized vector of the correct width. Search keeps working,
-because notes and queries go through the same function — it just retrieves worse
+because notes and queries go through the same function. It just retrieves worse
 than the model is capable of, with nothing to indicate it. Versions before 1.4.2
 pooled with `mean` unconditionally, so anyone who pointed `AMEM_EMBED_MODEL` at a
 BGE or GTE model was silently in this state.
@@ -434,14 +434,14 @@ BGE or GTE model was silently in this state.
 
 ## Prefixes are the quiet failure
 
-Several models were trained with a required prefix — `query: ` / `passage: `,
+Several models were trained with a required prefix: `query: ` / `passage: `,
 `Represent this sentence for searching relevant passages: `, or Qwen3's
 `Instruct: {task}\nQuery: {text}`. amem passes plain text.
 
 Omitting a required prefix **does not fail**. It silently costs retrieval quality,
 by roughly 1–5% on the models that quantify it. That is a worse failure mode than
-an error, which is why models needing no prefix are preferred for the default even
-when a prefixed model scores higher.
+an error. This is why the default prefers models that need no prefix, even when a
+prefixed model scores higher.
 
 ## What a model costs you
 
@@ -449,21 +449,21 @@ Embedding sits on the **hot path of every memory write and every search**. A mod
 that is ten times larger makes both of those roughly ten times slower, on top of
 holding its weights resident in the same process as your agent.
 
-- **Disk and RAM** — the ONNX file sizes in the tables are exact, as listed on
+- **Disk and RAM**: the ONNX file sizes in the tables are exact, as listed on
   HuggingFace. Working memory is roughly **weights + 50%** for activations and
   runtime. That last part is a rule of thumb, not a measurement.
-- **Speed** — no measured latency numbers are published here, because none have
-  been measured on this runtime. Compare parameter counts instead: the current
-  default is 118M, so `bge-m3` at 568M is roughly five times the work per encode
-  and `Qwen3-Embedding-4B` is roughly thirty-four times.
-- Inference runs on **CPU by default** — by configuration, not by limitation. See
+- **Speed**: no measured latency numbers are published here, because none were
+  measured on this runtime. Compare parameter counts instead. The current default
+  is 118M. `bge-m3` at 568M is roughly five times the work per encode.
+  `Qwen3-Embedding-4B` is roughly thirty-four times.
+- Inference runs on **CPU by default**, by configuration and not by limitation. See
   [Device](#device).
 
 ## Precision
 
 `AMEM_EMBED_DTYPE` picks which weights are downloaded and used. Transformers.js
-defaults to **`fp32`** on Node, which is the largest file a model publishes — for
-`bge-m3` that is 2.27 GB where `fp16` is 1.13 GB and `int8` is 568 MB.
+defaults to **`fp32`** on Node, which is the largest file a model publishes. For
+`bge-m3` that is 2.27 GB, where `fp16` is 1.13 GB and `int8` is 568 MB.
 
 ```bash
 AMEM_EMBED_DTYPE=int8
@@ -480,18 +480,18 @@ Attempting to get index by a name which does not exist:
   InsertedPrecisionFreeCast_/encoder/layer.23/output/LayerNorm/Constant_output_0
 ```
 
-Reproduced on `bge-m3` and on `gte-multilingual-base`, on two machines. It is the
-runtime and the precision, not a particular model.
+We reproduced this on `bge-m3` and on `gte-multilingual-base`, on two machines. It
+is the runtime and the precision, not a particular model.
 
-2.0.0 and 2.0.1 set `fp16` for `bge-m3` automatically, to halve the download. That
-means a fresh install of either **could not embed at all** — and nothing caught it,
-because every test mocks the embedding module and no test had ever loaded a model.
-Fixed in 2.0.2 by setting no dtype at all, and a
+2.0.0 and 2.0.1 set `fp16` for `bge-m3` automatically, to halve the download. A
+fresh install of either **did not embed at all**. Nothing caught the problem,
+because every test mocks the embedding module and no test loaded a model. 2.0.2
+fixed this by setting no dtype at all. A
 [smoke workflow](https://github.com/amemhq/amem/blob/main/.github/workflows/model-smoke.yml)
 now loads the default model for real on a schedule.
 
-If you set `fp16` yourself, expect it to fail until onnxruntime ships a fix. `int8`
-and `q8` are untested here — see the header of the tables about what "untested"
+If you set `fp16` yourself, it will fail until onnxruntime ships a fix. `int8`
+and `q8` are untested here. See the header of the tables for what "untested"
 means on this page.
 :::
 
@@ -500,14 +500,14 @@ Valid values are whatever the model publishes: `fp32`, `fp16`, `q8`, `int8`,
 options, so a typo does not run silently.
 
 **Changing this needs no migration.** Quantization does not change the vector
-width, so the collection is unaffected. It does perturb the values slightly, which
-means a store written at `fp32` and later queried at `int8` is marginally
-inconsistent — quantization error is small next to semantic distance, but that is
-reasoning rather than a measurement.
+width, so the collection is unaffected. It does perturb the values slightly. A
+store written at `fp32` and later queried at `int8` is marginally inconsistent.
+Quantization error is small next to semantic distance, but that is reasoning
+rather than a measurement.
 
 Note that a smaller file does not always mean less memory: on x86 there is no
 native fp16 arithmetic, so ONNX Runtime inserts casts back to fp32 at inference.
-The download shrinks; the compute may not.
+The download shrinks. The compute cost does not always shrink.
 
 ## Device
 
@@ -515,31 +515,30 @@ The download shrinks; the compute may not.
 `coreml` (macOS), `dml` (Windows), `cuda` (Linux x64) and `webgpu` on Node, and
 defaults to `cpu`.
 
-amem has never passed a device, which is the only reason it has always run on CPU.
+amem does not pass a device. That is the only reason it runs on CPU.
 `onnxruntime-node`'s macOS arm64 binary links `CoreML.framework` and exports the
-CoreML provider — the capability was there the whole time.
+CoreML provider. The capability was there the whole time.
 
 ::: warning Unmeasured
-Nobody has benchmarked this on amem's models, so there is no recommendation here.
-CoreML partitions a graph operator by operator and falls back to CPU for the ones
-it cannot take, so it can lose to plain CPU on some models, and it pays a
-compilation cost on first load. Treat it as an experiment to run, not a setting to
-turn on.
+Nobody benchmarked this on amem's models, so there is no recommendation here.
+CoreML partitions a graph operator by operator. It falls back to CPU for operators
+it cannot take. As a result, it can lose to plain CPU on some models. It also pays
+a compilation cost on first load. Treat it as an experiment to run, not a setting
+to turn on.
 :::
 
 ## Not usable today
 
 Almost everything at the top of C-MTEB and MTEB is out of reach, and **it is the
 runtime that puts it there, not the models**. The top of both leaderboards is
-1.5B–8B models published as SafeTensors only. `Conan-embedding-v1` looks like the
-exception — it has an ONNX and it loads — but the export is backbone-only and the
-score belongs to the projection it leaves behind, so it is in the table below with
-everything else.
+1.5B–8B models published as SafeTensors only. `Conan-embedding-v1` looks like the exception. It has an ONNX and it loads. But
+the export is backbone-only and the score belongs to the projection it leaves
+behind. As a result, it is in the table below with everything else.
 
-These are listed rather than dropped, with the specific blocker and what would
-lift it, because **most of the blockers are properties of our runtime choice, not
-of the model**. If amem ever moves off Transformers.js, this table is the
-re-filtering list — "no ONNX export" stops mattering the moment ONNX stops being
+These are listed rather than dropped, with the specific blocker and what can lift
+it, because **most of the blockers are properties of our runtime choice, not of
+the model**. If amem ever moves off Transformers.js, this table becomes the
+re-filtering list. "No ONNX export" stops mattering the moment ONNX stops being
 the only format we can load.
 
 Models with **no open weights at all** are excluded outright and are not in the
@@ -548,8 +547,9 @@ table: `text-embedding-3-large` (OpenAI), `Cohere-embed-multilingual-v3.0`,
 embedding service is against amem's design regardless.
 
 Chinese and English figures below come from the `Qwen3-Embedding-8B` and
-`Conan-embedding-v2` model cards — C-MTEB retrieval and MTEB(eng, v2) retrieval,
-NDCG@10, one leaderboard snapshot each — so they are comparable *within* a column.
+`Conan-embedding-v2` model cards. The figures are C-MTEB retrieval and MTEB(eng,
+v2) retrieval, NDCG@10, one leaderboard snapshot each. They are comparable *within*
+a column.
 
 | Model | zh | en | Weights | Blocked by | Would be unblocked by |
 | :--- | ---: | ---: | :--- | :--- | :--- |
@@ -571,11 +571,11 @@ NDCG@10, one leaderboard snapshot each — so they are comparable *within* a col
 | `jinaai/jina-embeddings-v5-*` | not published | 58.80 | ONNX, **CC BY-NC 4.0** | Licence bars it as a default; `text-nano`'s EuroBERT architecture is unsupported ([#1628](https://github.com/huggingface/transformers.js/issues/1628)) | Nothing — licence is not a runtime problem. Usable as a personal opt-in if the architecture lands |
 | `infgrad/jasper_en_vision_language_v1` | not published | not published | SafeTensors | No ONNX | Any loadable export |
 
-ᶜ C-MTEB score from an earlier snapshot; not from the two model cards above.
+ᶜ C-MTEB score from an earlier snapshot. Not from the two model cards above.
 
-Read the last column as a watchlist. **"A quantized export"** covers most of it,
-and the GGUF ecosystem already has that for several of these — so the obvious
-question is why amem does not just load GGUF instead.
+Read the last column as a watchlist. **"A quantized export"** covers most of it.
+The GGUF ecosystem already has that for several of these. The obvious question is
+why amem does not just load GGUF instead.
 
 We looked, and stayed on ONNX. The short version: `Qwen3-Embedding-4B`, the model
 that made the case, [fails past 512 tokens](https://github.com/QwenLM/Qwen3-Embedding/issues/35)
@@ -592,19 +592,19 @@ IR 10. Nothing on this page is excluded on IR grounds any more.
 ## What a fallback model risks
 
 Nine models on this page load through a path Transformers.js has no mapping for.
-It works — `gte-multilingual-base` at fp32 returns 768 unit-norm dims with a
-Chinese near-synonym pair at 0.86 against 0.44 for an unrelated one — but the
-library logs it as unsupported and nothing promises the next version still does it.
+It works. `gte-multilingual-base` at fp32 returns 768 unit-norm dims with a Chinese
+near-synonym pair at 0.86 against 0.44 for an unrelated one. But the library logs
+it as unsupported and nothing promises the next version still does it.
 
-**What breaks if that happens.** The plugin cannot open the store: every path goes
-through `ensureCollection`, which measures the model's width, which means loading
-it. You get `memory is UNUSABLE` at startup and no reads or writes until it is
-resolved.
+**What breaks if that happens.** The plugin cannot open the store. Every path goes
+through `ensureCollection`. That function measures the model's width, which means
+loading it. You get `memory is UNUSABLE` at startup and no reads or writes until
+you resolve it.
 
 **What does not break: your memories.** `amem-migrate` never loads the model that
 built the source. It reads the collection through the raw helpers that deliberately
 bypass `ensureCollection`, throws the stored vectors away, and re-embeds from the
-payload text — content, keywords, tags and context are all still there. The only
+payload text. Content, keywords, tags, and context are all still there. The only
 model it needs to load is the one you are moving *to*.
 
 So the recovery is:
@@ -614,17 +614,17 @@ AMEM_EMBED_MODEL=Xenova/bge-m3 npx --package=@amemhq/core amem-migrate --apply
 # then --switch
 ```
 
-Downtime and a rebuild, not data loss. Weigh a fallback model against that, not
-against losing the store — but do weigh it, because the rebuild is the whole store
-and the outage lasts until you finish.
+The result is downtime and a rebuild, not data loss. Weigh a fallback model
+against that, not against losing the store. Weigh it carefully, because the rebuild
+covers the whole store and the outage lasts until you finish.
 
-Two things reduce the exposure if you take one:
+If you use a fallback model, two things reduce the exposure:
 
-- **Pin `@huggingface/transformers`.** The plugin bundles its own copy, so the
-  version that works stays working until you update the plugin.
+- **Pin `@huggingface/transformers`.** The plugin bundles its own copy. The version
+  that works continues to work until you update the plugin.
 - **Keep the payload complete.** The rebuild is only as good as the text in the
   store. `--no-refresh-fields` on the original migration leaves early notes with
-  empty keywords and tags, and those are what a future rebuild has to work from.
+  empty keywords and tags, and those are what a future rebuild must work from.
 
 ## Known runtime caveats
 
@@ -632,20 +632,20 @@ Two things reduce the exposure if you take one:
   Transformers.js has no registered class for. It loads through a generic
   encoder-only fallback and prints two warnings on every load. Embeddings come out
   correct in user reports, but the fallback's handling of the RoPE-based
-  8192-token context is unverified — which matters, since the long context is the
-  reason to pick it. Tracked in issues
+  8192-token context is unverified. This matters because the long context is the
+  reason to pick it. These are tracked in issues
   [891](https://github.com/huggingface/transformers.js/issues/891),
-  [939](https://github.com/huggingface/transformers.js/issues/939) and
+  [939](https://github.com/huggingface/transformers.js/issues/939), and
   [1177](https://github.com/huggingface/transformers.js/issues/1177), none fixed.
 - **`ibm-granite/*`** quantized files are named `model_quint8_avx2.onnx`. The
-  AVX2-specific quantization may misbehave on ARM; prefer fp32 on Apple Silicon.
+  AVX2-specific quantization can misbehave on ARM. Use fp32 on Apple Silicon.
 - **`onnx-community/bge-m3-ONNX`** ships a 2-byte, broken `model_fp16.onnx`. Use
   `Xenova/bge-m3` instead.
 - **Check `modules.json` for a `Dense` module before trusting any ONNX.**
   Sentence-Transformers models can end in a learned projection after pooling, and a
   stock Optimum export covers the transformer backbone only. Transformers.js does
-  its own pooling but has no notion of a Dense head, so you silently get the
-  pre-projection vectors — a representation nobody benchmarked.
+  its own pooling but has no notion of a Dense head. As a result, you silently get
+  the pre-projection vectors, a representation nobody benchmarked.
 
   Read the module *types*, not the count. `Transformer, Pooling, Normalize` is
   three modules and is fine: `Normalize` is plain L2, which amem does itself.
@@ -663,4 +663,4 @@ Two things reduce the exposure if you take one:
 
 At a few thousand memories the difference between 384 and 1024 dimensions is a few
 megabytes of storage. Quality tracks training data and language coverage, not
-vector width. Choose on scores, context length and licence — not on dimension.
+vector width. Choose on scores, context length, and licence. Do not choose on dimension.

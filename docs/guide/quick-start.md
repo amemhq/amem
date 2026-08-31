@@ -1,6 +1,6 @@
 # Quick Start
 
-Once installed, the plugin is available as OpenClaw tools automatically. No additional setup is needed.
+After installation, the plugin registers as OpenClaw tools automatically. You do not need additional setup.
 
 ## Write a memory
 
@@ -36,7 +36,7 @@ Returns the total active note count for the current agent namespace.
 memory_consolidate()
 ```
 
-Merges semantic duplicates (cosine ≥ 0.75) across the whole store, grouped by category, with link cascading. Knowledge notes are skipped.
+Merges semantic duplicates (cosine ≥ 0.75) across the whole store, grouped by category, with link cascading. It skips knowledge notes.
 
 ---
 
@@ -48,7 +48,7 @@ The plugin schedules **daily consolidation** automatically at **02:30 AM** (in-p
 - Merges semantic duplicates (cosine ≥ 0.75) into one note, keeping the episodic type
 - Cascades all link references to preserve graph topology
 
-No configuration required.
+The plugin requires no configuration.
 
 ---
 

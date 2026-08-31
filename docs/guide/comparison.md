@@ -12,7 +12,7 @@
 
 ## Why not mem0?
 
-[mem0](https://github.com/mem0ai/mem0) is a popular memory layer for AI agents. openclaw-amem's dedup and evolution mechanism was inspired by mem0's LLM-driven memory update approach, while taking a different architectural direction.
+[mem0](https://github.com/mem0ai/mem0) is a popular memory layer for AI agents. The dedup and evolution mechanism in openclaw-amem draws from mem0's LLM-driven memory update approach but takes a different architectural direction.
 
 | | mem0 | openclaw-amem |
 |---|---|---|
@@ -27,7 +27,7 @@
 
 ## BFS ablation results
 
-The 2-hop BFS graph expansion is the key architectural advantage. Measured on our internal smoke test:
+The 2-hop BFS graph expansion is the key architectural advantage. The following results come from our internal smoke test:
 
 | | BFS OFF | BFS ON | Delta |
 |:---|:---:|:---:|:---:|
@@ -35,4 +35,4 @@ The 2-hop BFS graph expansion is the key architectural advantage. Measured on ou
 | bfs category | 2.00 | 5.00 | **+3.00** |
 | multihop category | 4.00 | 5.00 | **+1.00** |
 
-Without BFS, multi-hop relational queries (e.g. "find the contact email for the vendor mentioned in the Q3 contract") fail because the two facts are stored as separate notes not reachable by a single vector query.
+Without BFS, multi-hop relational queries fail. For example, a query such as "find the contact email for the vendor mentioned in the Q3 contract" fails because the system stores the two facts as separate notes. A single vector query cannot reach both.
