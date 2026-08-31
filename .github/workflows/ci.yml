@@ -97,6 +97,13 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+      # The docs only built in deploy-docs.yml, which runs after merge — so a
+      # broken page failed the deploy rather than the PR. A colon inside an
+      # unquoted frontmatter value is enough to do it, and nothing else here
+      # parses that file.
+      - name: Build docs
+        run: pnpm docs:build
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

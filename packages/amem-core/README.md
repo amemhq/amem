@@ -34,7 +34,7 @@ Unlike a flat vector store, A-MEM maintains memory as a living, self-evolving se
   ```
 
 - 🔍 **2-hop graph traversal with relevance gate** — BFS from anchors, admitting only nodes with cos-sim ≥ 0.25 to the query.
-- 🀄 **Chinese-optimized BM25** — [Jieba](https://github.com/fxsjy/jieba) (`@node-rs/jieba`) word segmentation for CJK; whitespace fallback for other languages.
+- 🀄 **Chinese-optimized BM25** — [Jieba](https://github.com/fxsjy/jieba) (`@node-rs/jieba`) word segmentation for Chinese; whitespace fallback elsewhere. Japanese and Korean get no lexical tokens — dense retrieval still covers them.
 - 🧠 **Knowledge vs episodic** — `note_type` separates durable `knowledge` (skips consolidation-merge + time-decay) from `memory`; `topics` tags + `topicsFilter` enable subject-level recall.
 - 🔐 **Multi-agent isolation** — explicit `owner` / `readers` / `writers` on every note; Mode A (shared collection filtered by `agent_id`) or Mode B (dedicated collection).
 - 📊 **Quality controls** — write-time gate rejects < 10-char content and flags ephemeral notes; `scanLowQuality` finds too-short/expired/conflicting notes.

@@ -26,3 +26,36 @@ describe('simpleTokenize', () => {
     expect(tokens).toContain('qdrant')
   })
 })
+
+/**
+ * Japanese and Korean, pinned as they are rather than as anyone would want them.
+ *
+ * The branch in `simpleTokenize` tests for Han characters, so Korean and kana-only
+ * Japanese never reach Jieba and fall to `[\w]+`, which matches neither script.
+ * Japanese *with* kanji is the quiet one: it does reach Jieba, gets cut as though
+ * it were Chinese, and comes back holding the kanji with every kana dropped —
+ * output that looks like it worked.
+ *
+ * These assert the current behaviour so that changing it is deliberate. If someone
+ * adds a segmenter, these fail, and that is the point.
+ */
+describe('Japanese and Korean produce no usable lexical tokens', () => {
+  it('drops every kana from Japanese that contains kanji', () => {
+    const t = simpleTokenize('今日はサーバーでダイヤモンドを見つけました')
+    expect(t.every((x) => !/[぀-ヿ]/.test(x))).toBe(true)
+    expect(t.length).toBeLessThan(4)
+  })
+
+  it('yields nothing at all for kana-only Japanese', () => {
+    expect(simpleTokenize('きょうはとてもたのしかった')).toEqual([])
+  })
+
+  it('yields nothing at all for Korean', () => {
+    expect(simpleTokenize('오늘 서버에서 다이아몬드를 찾았습니다')).toEqual([])
+  })
+
+  it('still tokenizes Chinese and English, so this is about those two scripts only', () => {
+    expect(simpleTokenize('我今天在服务器里挖到了钻石').length).toBeGreaterThan(5)
+    expect(simpleTokenize('I found diamonds today').length).toBe(4)
+  })
+})

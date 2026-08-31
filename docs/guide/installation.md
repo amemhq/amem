@@ -32,10 +32,15 @@ openclaw plugins install --link ./packages/openclaw-amem
 
 ```bash
 openclaw plugins update openclaw-amem
+```
+
+The gateway does not pick the new build up on its own — restart it:
+
+```bash
 openclaw gateway restart
 ```
 
-Two things worth knowing before you run it.
+Two things worth knowing before you update.
 
 **It rebuilds `node_modules`, which is where the model cache lives by default** —
 so an update re-downloads 2.27 GB unless you have set `AMEM_MODEL_CACHE` to a path
@@ -111,7 +116,7 @@ If you were previously using `memory-core`, you can safely remove or disable it 
 
 > **Required:** `hooks.allowConversationAccess: true` must be set explicitly. Without it, the `agent_end` hook is blocked by OpenClaw's security policy and **automatic memory write-back will not work** — memories will only be written when you call `memory_add` manually.
 
-> If `allowConversationAccess` is not set, the plugin will log a warning after 10 minutes of startup and append a notice to every `memory_search` result indicating that write-back is disabled (Story 34).
+> If `allowConversationAccess` is not set, the plugin logs a warning at startup and appends a notice to every `memory_search` result saying write-back is disabled. It is decided once, by reading the config, rather than by waiting to see whether the hook ever fires.
 
 ---
 

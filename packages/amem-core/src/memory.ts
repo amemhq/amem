@@ -40,10 +40,22 @@ function getJieba(): Jieba {
 
 /**
  * Tokenize text for BM25 indexing.
- * Story 21: Chinese text is segmented with Jieba (HMM mode) before indexing.
- * Non-Chinese text falls back to whitespace/word-boundary splitting.
- * Mixed text (e.g. "检索Qdrant结果") is handled correctly — Jieba preserves
- * ASCII tokens as-is while segmenting CJK spans.
+ *
+ * Chinese is segmented with Jieba (HMM mode); everything else falls back to
+ * word-boundary splitting. Mixed text ("检索Qdrant结果") is handled — Jieba keeps
+ * ASCII tokens as-is while segmenting the Han spans.
+ *
+ * **Japanese and Korean produce nothing useful, and it is not obvious.** The
+ * branch below tests for Han characters only, so Korean and kana-only Japanese
+ * skip Jieba and fall to `[\w]+`, which matches neither Hangul nor kana — zero
+ * tokens, so BM25 never indexes them. Japanese *with* kanji is worse than nothing:
+ * it takes the Jieba branch and gets segmented as though it were Chinese, which
+ * keeps the kanji and drops every kana. Measured: a 13-word Japanese sentence
+ * yields 2 tokens, a Korean one yields 0.
+ *
+ * Dense retrieval covers both — the default model is multilingual — so search
+ * works, on one half of the hybrid rather than two. Fixing it means a per-language
+ * segmenter, which is a real dependency decision and not a tweak here.
  */
 export function simpleTokenize(text: string): string[] {
   const hasChinese = /[\u4e00-\u9fff]/.test(text)

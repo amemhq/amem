@@ -17,7 +17,7 @@ memory_add(text)
       │
       ▼
  3. Link Generation
-    ├── retrieve top-6 candidates (embedding similarity > 0.3)
+    ├── retrieve top-6 candidates (embedding similarity ≥ 0.3)
     └── LLM verifies each: link bidirectionally if relevant
       │
       ▼
@@ -37,7 +37,7 @@ memory_search(query)
       ▼
  1. Embed query (local ONNX)
       │
-      ├──► BM25 ranking (Jieba tokenized for CJK)
+      ├──► BM25 ranking (Jieba for Chinese; see note on ja/ko)
       │    only notes sharing a term with the query
       └──► Dense vector cosine similarity
       │
@@ -67,7 +67,7 @@ When a memory is updated or contradicted, the old note is marked `is_active: fal
 
 At **02:30 AM** (in-process scheduler), the plugin:
 
-1. Groups all active notes by `category`
+1. Groups active episodic notes by `category` — knowledge notes are skipped
 2. Within each group, finds pairs with cosine similarity ≥ 0.75
 3. Merges duplicates into a single unified note
 4. Cascades all link references from soft-deleted notes to the merged note
@@ -82,7 +82,7 @@ Every `memory_add` call passes through three dedup layers before reaching Qdrant
 |-------|-----------|-----------|--------|
 | L1 | MD5 hash | Exact match | Skip (return existing ID) |
 | L2 | Vector similarity | ≥ 0.85 | UPDATE existing note |
-| L2.5 | Vector similarity | 0.72–0.85 | Write + flag `pending_merge=true` |
+| L2.5 | Vector similarity | 0.72 ≤ s < 0.85 | Write + flag `pending_merge=true` |
 
 `pending_merge` notes are processed by the `agent_end` hook via LLM evolution judgment. See [Evolution & Quality](/guide/evolution) for details.
 
@@ -101,7 +101,7 @@ See [Agent Isolation](/guide/agent-isolation) for full details.
 
 If the `agent_end` hook is silently blocked by OpenClaw's security policy (missing `allowConversationAccess=true`), the plugin detects this automatically:
 
-- After 10 minutes of startup without a single hook fire, a `warn`-level log entry is written with setup instructions.
+- The plugin reads the hook configuration at startup and warns immediately if write-back is blocked — decided from config rather than by waiting to see whether the hook ever fires.
 - Every `memory_search` result will include a visible warning notice so you see it directly in the agent's replies.
 
 This prevents the silent failure mode where automatic write-back stops working without any visible indication.
