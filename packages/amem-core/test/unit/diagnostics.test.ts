@@ -92,3 +92,53 @@ describe('no engine module writes to stderr directly', () => {
     expect(offenders).toEqual([])
   })
 })
+
+describe('a failed write says so, a quiet turn does not', () => {
+  // The distinction this whole file exists for. Before it, "the LLM is down and
+  // your memories are being stored blank" and "nothing in this turn was worth
+  // keeping" produced identical output: none.
+  async function withSink() {
+    vi.resetModules()
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
+    const config = await import('../../src/config.js')
+    const llm = await import('../../src/llm.js')
+    const sink = vi.fn()
+    config.configure({ warn: sink })
+    return { llm, sink }
+  }
+
+  const said = (sink: ReturnType<typeof vi.fn>) => sink.mock.calls.map((c) => String(c[0]))
+
+  it('reports a 200 that carries no text, which never throws', async () => {
+    const { llm, sink } = await withSink()
+    anthropicCreate.mockResolvedValueOnce({ content: [] })
+
+    expect(await llm.llmCall('hi')).toBeNull()
+    expect(said(sink).join('\n')).toContain('no text')
+  })
+
+  it('reports that a note is about to be stored with nothing filled in', async () => {
+    const { llm, sink } = await withSink()
+    anthropicCreate.mockResolvedValueOnce({ content: [] })
+
+    const note = await llm.llmConstructNote('some memory text')
+    expect(note.keywords).toEqual([])
+    expect(said(sink).join('\n')).toContain('no keywords')
+  })
+
+  it('reports a CRUD response it could not read', async () => {
+    const { llm, sink } = await withSink()
+    anthropicCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'I cannot help with that.' }] })
+
+    expect(await llm.llmCrudDecision('u', 'a', [])).toEqual([])
+    expect(said(sink).join('\n')).toContain('no array')
+  })
+
+  it('stays silent when the model reads the turn and decides to store nothing', async () => {
+    const { llm, sink } = await withSink()
+    anthropicCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: '[]' }] })
+
+    expect(await llm.llmCrudDecision('u', 'a', [])).toEqual([])
+    expect(sink).not.toHaveBeenCalled()
+  })
+})
