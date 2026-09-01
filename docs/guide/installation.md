@@ -80,7 +80,7 @@ Add `openclaw-amem` to your plugin config and hook it into the `memory` slot:
 ```
 
 ::: warning Memory slot conflict
-If your `openclaw.json` already has a `memory` slot assigned to another plugin (for example `memory-core`), **you must replace it** with `openclaw-amem`. The gateway only loads one plugin per slot. The gateway **silently skips** a second `memory`-kind plugin with no log output.
+If your `openclaw.json` already has a `memory` slot assigned to another plugin (for example `memory-core`), **you must replace it** with `openclaw-amem`:
 
 ```json
 // ❌ Will cause amem to be silently ignored
@@ -94,7 +94,19 @@ If your `openclaw.json` already has a `memory` slot assigned to another plugin (
 }
 ```
 
-If you were previously using `memory-core`, you can safely remove or disable it in `plugins.entries`:
+**On OpenClaw 2026.8.1, the slot alone is not enough.** A second `memory`-kind plugin still loads, even with no slot and no entry in `plugins.entries`. Both plugins then register a tool named `memory_search`, and only one of them keeps the name. The gateway finds bundled plugins before installed ones, so `memory-core` wins and amem's `memory_search` tool is dropped.
+
+Amem still serves the memory slot, so memory itself keeps working. The tool an agent calls is the other plugin's.
+
+The gateway does report the drop, at level ERROR, in the structured log at `/tmp/openclaw/openclaw-<date>.log`. It does not appear in the gateway log:
+
+```
+plugin tool name conflict (openclaw-amem): memory_search
+```
+
+The name in brackets is the plugin whose tool was dropped, not the one that kept it.
+
+So disable the other plugin in `plugins.entries`:
 
 ```json
 "entries": {
@@ -107,6 +119,7 @@ If you were previously using `memory-core`, you can safely remove or disable it 
 }
 ```
 
+`memory-core` also does work that has nothing to do with the memory slot, such as writing its dream diary. If you disable it, that work stops as well.
 :::
 
 > **Required:** `hooks.allowConversationAccess: true` must be set explicitly. Without it, OpenClaw's security policy blocks the `agent_end` hook and **automatic memory write-back will not work**. The plugin writes memories only when you call `memory_add` manually.
