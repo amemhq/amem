@@ -183,12 +183,34 @@ function applyModelPaths(env: { cacheDir: string | null; localModelPath: string;
 }
 
 /**
+ * A byte count in the unit that makes it readable.
+ *
+ * The two files this reports on differ by three orders of magnitude — bge-m3
+ * ships a 607 kB graph next to 2.27 GB of weights — so a fixed unit cannot
+ * describe both. Hardcoded GB rendered the graph as "0.00 GB", which reads as a
+ * failed size lookup rather than a small file.
+ */
+export function humanBytes(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`
+  // Bytes get their own branch for the same reason GB was wrong: rounding a
+  // small number into a large unit prints a zero, and a zero reads as a broken
+  // size rather than a small file.
+  if (n >= 1e3) return `${Math.round(n / 1e3)} kB`
+  return `${n} B`
+}
+
+/**
  * Report a download rather than going silent for the length of one.
  *
  * The default model is 2.27 GB. On a slow link that is over an hour with no
  * output at all, which reads as a hang — and a migration that looks hung is one
- * somebody interrupts. Only fires while bytes are moving; a cached model prints
- * nothing.
+ * somebody interrupts.
+ *
+ * It fires on a cached model too, as one 100% line per file, because
+ * Transformers.js reports reading the cache with the same progress events it
+ * reports a download with. That is why the line says a size: an instant 100% of
+ * 2.27 GB is a cache hit, and the same line arriving slowly is a real download.
  */
 function makeProgressReporter(): (e: { status?: string; file?: string; progress?: number; total?: number }) => void {
   const lastPct = new Map<string, number>()
@@ -199,7 +221,7 @@ function makeProgressReporter(): (e: { status?: string; file?: string; progress?
     const pct = Math.floor(e.progress / 10) * 10
     if (lastPct.get(e.file) === pct) return
     lastPct.set(e.file, pct)
-    const size = e.total ? ` of ${(e.total / 1e9).toFixed(2)} GB` : ''
+    const size = e.total ? ` of ${humanBytes(e.total)}` : ''
     console.log(`[amem] downloading ${e.file}: ${pct}%${size}`)
   }
 }

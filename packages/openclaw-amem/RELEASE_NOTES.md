@@ -23,6 +23,15 @@ or with something the engine cannot read. It also logs a message when a memory
 is about to be saved with none of its fields filled in. A turn from which the
 model decides to save nothing stays quiet, because that is not a failure.
 
+**The startup line about the model no longer says `0.00 GB`.** The model comes
+in two files, and one of them is small. The line always used gigabytes, so the
+small file showed as zero, which looks like a broken download. Each file now
+shows in a unit that fits it.
+
+That line also appears when the model is already on disk. It reaches 100% at
+once, once per file. This is what a cached model looks like, not a second
+download.
+
 There is nothing to configure. Update the plugin. Restart the gateway.
 
 ## 2.1.1
