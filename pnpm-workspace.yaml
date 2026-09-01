@@ -22,7 +22,7 @@ overrides:
   # Upper bound matters: every parent (ajv, @fastify/ajv-compiler,
   # fast-json-stringify) declares ^3, and an unbounded '>=3.1.4' resolves to
   # 4.x — outside all of them. The patch exists in the 3.x line; stay there.
-  fast-uri: '>=3.1.4 <4' # GHSA: host confusion via literal backslash authority
+  fast-uri: '>=3.1.4 <5' # GHSA: host confusion via literal backslash authority
   # sharp ships with @huggingface/transformers, which declares ^0.34.5 — so the
   # patched 0.35.0 sits OUTSIDE its range and this override is not free. It is
   # taken deliberately: transformers pulls sharp for IMAGE preprocessing, and
