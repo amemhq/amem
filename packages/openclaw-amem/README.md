@@ -91,7 +91,7 @@ Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
 }
 ```
 
-> **⚠️ Memory slot conflict:** If your `openclaw.json` already assigns the `memory` slot to another plugin (for example, `memory-core`), you **must** change it to `openclaw-amem`. The gateway only loads one plugin per slot. Any additional `memory`-kind plugins are **silently skipped**. Set `"memory-core": { "enabled": false }` in `entries` to disable the old plugin.
+> **⚠️ Memory slot conflict:** If your `openclaw.json` already assigns the `memory` slot to another plugin (for example, `memory-core`), you **must** change it to `openclaw-amem`. On OpenClaw 2026.8.1 the slot alone is not enough. The other plugin still loads and takes the `memory_search` tool name, because the gateway loads built-in plugins before installed ones. Memory keeps working through the slot, but the tool an agent calls is then the other plugin's. Set `"memory-core": { "enabled": false }` in `entries` as well. Note that `memory-core` also writes its dream diary, and disabling it stops that too.
 
 ### 3. Restart OpenClaw
 
