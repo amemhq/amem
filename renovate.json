@@ -25,6 +25,12 @@
       "description": "Workflow actions in one PR.",
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
+    },
+    {
+      "description": "fast-uri's override ceiling is load-bearing. Every parent (ajv, @fastify/ajv-compiler, fast-json-stringify) declares ^3, so 4.x resolves outside all of them; the GHSA patch is in the 3.x line. Renovate proposed raising the bound to <5, which removes the guard and gains nothing. Security alerts still reach us through vulnerabilityAlerts.",
+      "matchPackageNames": ["fast-uri"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ],
   "vulnerabilityAlerts": {
