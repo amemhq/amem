@@ -121,7 +121,7 @@ importers:
         version: 2.0.2
       '@node-rs/jieba-linux-x64-gnu':
         specifier: ^2.0.1
-        version: 2.0.1
+        version: 2.0.2
 
   packages/openclaw-amem:
     dependencies:
@@ -177,7 +177,7 @@ importers:
         version: 2.0.2
       '@node-rs/jieba-linux-x64-gnu':
         specifier: ^2.0.1
-        version: 2.0.1
+        version: 2.0.2
 
 packages:
 
@@ -951,13 +951,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     libc: [musl]
-
-  '@node-rs/jieba-linux-x64-gnu@2.0.1':
-    resolution: {integrity: sha512-sq3J6L2ANTE25I9eVFq/nb57OtXcvUIeUD1CTKJxwgTKIVmcB2LyOZpWf20AjHRUfbMER9Klqg5dgyyO+Six+w==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
 
   '@node-rs/jieba-linux-x64-gnu@2.0.2':
     resolution: {integrity: sha512-514+0NFGCZp2e9lrnVRmyfe1/Cd+zUV3IUD0pWYB2gHfmowNrHPHL95WZosJMDp96C6LYbJZuNTRKifm0PyVBA==}
@@ -4072,9 +4065,6 @@ snapshots:
     optional: true
 
   '@node-rs/jieba-linux-arm64-musl@2.0.2':
-    optional: true
-
-  '@node-rs/jieba-linux-x64-gnu@2.0.1':
     optional: true
 
   '@node-rs/jieba-linux-x64-gnu@2.0.2':
