@@ -118,7 +118,7 @@ importers:
     optionalDependencies:
       '@node-rs/jieba-darwin-arm64':
         specifier: ^2.0.1
-        version: 2.0.1
+        version: 2.0.2
       '@node-rs/jieba-linux-x64-gnu':
         specifier: ^2.0.1
         version: 2.0.1
@@ -174,7 +174,7 @@ importers:
     optionalDependencies:
       '@node-rs/jieba-darwin-arm64':
         specifier: ^2.0.1
-        version: 2.0.1
+        version: 2.0.2
       '@node-rs/jieba-linux-x64-gnu':
         specifier: ^2.0.1
         version: 2.0.1
@@ -913,12 +913,6 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [android]
-
-  '@node-rs/jieba-darwin-arm64@2.0.1':
-    resolution: {integrity: sha512-10+nwGQ6KzXXJlIL/sELA6Fi6m7eJ7xJksBiKuw1kxKUgaJwtVfAG0iqRF+NRQv0Sdq7r3k5ew9K9y0+IYaEcA==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [darwin]
 
   '@node-rs/jieba-darwin-arm64@2.0.2':
     resolution: {integrity: sha512-JIpC+9p3E67OPzvvLcxI9TUHfQL6Xuti+e4zbio8Kc7gUZ3EYJ+USRHGS6EixhsWDDZKFhNThl3ztTk9ZqBjzg==}
@@ -4060,9 +4054,6 @@ snapshots:
     optional: true
 
   '@node-rs/jieba-android-arm64@2.0.2':
-    optional: true
-
-  '@node-rs/jieba-darwin-arm64@2.0.1':
     optional: true
 
   '@node-rs/jieba-darwin-arm64@2.0.2':
