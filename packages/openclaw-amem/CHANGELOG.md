@@ -1,5 +1,154 @@
 # Changelog
 
+## 2.1.2
+
+### Patch Changes
+
+- [#135](https://github.com/amemhq/amem/pull/135) [`904e678`](https://github.com/amemhq/amem/commit/904e678c5ccef7f234bce080d2cc2c25d43e5c26) Thanks [@heichaowo](https://github.com/heichaowo)! - Stop claiming CJK. It is Chinese.
+
+  `simpleTokenize` branches on Han characters, so Korean and kana-only Japanese never
+  reach Jieba and fall to `[\w]+`, which matches neither Hangul nor kana — **zero
+  tokens, so BM25 never indexes them**. Japanese _with_ kanji is worse than nothing:
+  it does reach Jieba, gets cut as though it were Chinese, and comes back holding the
+  kanji with every kana dropped. Measured: a 13-word Japanese sentence yields 2
+  tokens, a Korean one yields 0, the same Chinese sentence yields 9.
+
+  Dense retrieval covers both — the default model is multilingual — so search works
+  for ja/ko on one half of the hybrid rather than two. Nothing about that is
+  documented, and six places advertised "CJK".
+
+  Behaviour unchanged; a real fix means a per-language segmenter, which is a
+  dependency decision rather than a tweak. Four tests pin what it does today so
+  changing it has to be deliberate.
+
+- [#147](https://github.com/amemhq/amem/pull/147) [`3573ec6`](https://github.com/amemhq/amem/commit/3573ec69d77bc0fcb6d1f62970858d0d94ad028a) Thanks [@heichaowo](https://github.com/heichaowo)! - Show the ONNX graph size as a size, not as `0.00 GB`.
+
+  The download reporter hardcoded GB. bge-m3 ships a 607 kB graph next to 2.27 GB
+  of weights, three orders of magnitude apart, so every startup printed:
+
+  ```
+  [amem] downloading onnx/model.onnx: 100% of 0.00 GB
+  [amem] downloading onnx/model.onnx_data: 100% of 2.27 GB
+  ```
+
+  A zero there reads as a failed size lookup, which sent one operator looking for
+  a broken download that was not broken.
+
+  The reporter's docblock was wrong too. It claimed a cached model prints nothing,
+  and a cached model prints one 100% line per file, because Transformers.js
+  reports reading the cache with the same progress events it reports a download
+  with. Checked on a real store: the two files were last written a month before
+  the gateway last started, so those lines are a cache hit and nothing was
+  re-downloaded. The docblock now says what the line means — an instant 100% of
+  2.27 GB is a cache hit, and the same line arriving slowly is a real download.
+
+- [#141](https://github.com/amemhq/amem/pull/141) [`44de366`](https://github.com/amemhq/amem/commit/44de3660e5c25cefdd8319e3bbba78e1ea57ac6e) Thanks [@heichaowo](https://github.com/heichaowo)! - Send engine warnings to the host logger instead of stderr.
+
+  The engine reported every recovered failure with `console.error` or
+  `console.warn`. Both write to stderr. The OpenClaw gateway runs under launchd
+  with `StandardErrorPath` set to `/dev/null`, so none of them arrived anywhere.
+
+  The gateway log on a real store shows what that costs. Over 11 days the
+  `agent_end` hook fired 684 times and wrote no memory at all, because
+  `AMEM_LLM_PROVIDER` was wrong and every LLM call failed. `llmCall` logged each
+  failure and the log kept none of them. Writes resumed when the provider was
+  fixed. In the log the 11 days look the same as 11 quiet days.
+
+  The lost lines are worse than a lost error. `llmConstructNote` returns an empty
+  structure when the call fails, and the note is still stored, with no keywords,
+  no tags and no context. `storage.ts` prints the notice that tells an operator
+  to migrate a legacy store, and the comment above it says that being told is the
+  only way the operator finds out.
+
+  `configure({ warn })` now takes the sink. The plugin passes `logger.warn`. The
+  default is still stderr, which is correct for `amem-migrate` and for any CLI
+  that uses the engine directly.
+
+  A unit test reads every engine module and fails on a new `console.error` or
+  `console.warn`. `cli-migrate.ts` is exempt because it writes to a terminal that
+  somebody is watching.
+
+- [#149](https://github.com/amemhq/amem/pull/149) [`f148b21`](https://github.com/amemhq/amem/commit/f148b21984caaa682b1e74fc97424b49b6cf05a9) Thanks [@heichaowo](https://github.com/heichaowo)! - Correct what happens when a second memory plugin is installed.
+
+  Two places said the gateway "silently skips" a second `memory`-kind plugin with
+  no log output. On OpenClaw 2026.8.1 it does the opposite. Both plugins load, both
+  register a tool named `memory_search`, and the gateway keeps one of them.
+
+  Bundled plugins are found before installed ones, so `memory-core` keeps the name
+  and amem's `memory_search` tool is dropped. Amem still serves the memory slot, so
+  memory works, but the tool an agent calls is the other plugin's. Setting the slot
+  is not enough on its own any more — the other plugin has to be disabled too.
+
+  The drop is reported, at level ERROR, but in the structured log under
+  `/tmp/openclaw/`, not in the gateway log:
+
+  ```
+  plugin tool name conflict (openclaw-amem): memory_search
+  ```
+
+  The name in brackets is the plugin whose tool was dropped, which is the opposite
+  of what it reads like.
+
+  Both pages now also say that `memory-core` does unrelated work, so an operator
+  who disables it knows what else stops.
+
+- [#142](https://github.com/amemhq/amem/pull/142) [`e3429b4`](https://github.com/amemhq/amem/commit/e3429b4f273d10d3a0a397e559a05753c304b340) Thanks [@heichaowo](https://github.com/heichaowo)! - Say when a write fails, and stay quiet when nothing needed writing.
+
+  The previous patch gave the engine a warning channel the host can read. It did
+  not help the paths that write no message at all. Every LLM helper returns a
+  safe-looking default — `null`, `[]`, `false`, an empty structure — and most of
+  those returns were silent. An LLM that answers with nothing and a turn that
+  holds nothing worth keeping produced the same output.
+
+  Most of them share one cause. `llmCall` reports the calls that throw, but a
+  provider can also answer 200 with no text, and both wrappers turned that into a
+  `null` that nobody logged. Every caller treats that `null` as a failure, so
+  `llmCall` reports it once, at the source, rather than at each of the ten places
+  that check it.
+
+  The rest are the responses that arrive and cannot be used, which are now named
+  where they happen:
+
+  - `llmConstructNote` says that the note is about to be stored with no keywords,
+    tags or context. This is the one with a lasting cost: the note is saved, and
+    later searches match almost nothing in it.
+  - `llmCrudDecision` and `llmConflictScan` say when the response holds no array,
+    or holds something that is not an array.
+  - `llmShouldMerge` says when the verdict is missing.
+  - `llmEvolutionJudge` says when it defaults a pair to `NEW` without an answer.
+    `NEW` is a verdict, and this path reached it without asking the model.
+  - The `agent_end` hook says when a turn arrives with no user or no assistant
+    message.
+
+  A turn the model reads and decides to store nothing from writes no message.
+  That case is not a failure, and a test pins it.
+
+- [#143](https://github.com/amemhq/amem/pull/143) [`b009123`](https://github.com/amemhq/amem/commit/b0091237537056e50d68e541994721f2ae0376a3) Thanks [@heichaowo](https://github.com/heichaowo)! - Rewrite the documentation in Simplified Technical English.
+
+  All 19 documentation files: the 14 pages under `docs/`, the four READMEs, and
+  the plugin release notes. ASD-STE100 in pragmatic mode, so the domain vocabulary
+  stays. Short sentences, active voice, simple tenses, the condition before the
+  command, and one word for one meaning across the whole set.
+
+  A style pass changes no facts, and this documentation was audited a month ago,
+  so a rewrite that quietly moved a number would undo that work. Every file was
+  compared against its committed version for code spans, inline code, headings,
+  link targets and numbers. Nothing was lost. Three tokens were added, all of them
+  a vague subject replaced by its real one: "Enforcement is planned for Story 33"
+  became "Story 33 will add enforcement", and "it refuses to do that unless"
+  became "amem refuses to run `--switch` unless".
+
+  Two things the rewrite found rather than made:
+
+  - `design-rationale.md` said the evidence pass "changed four things and removed
+    one claim" above a list of three. The count never matched, going back to the
+    commit that added the page. The lead-in now says what the list holds.
+  - `RELEASE_NOTES.md` is wrapped at 80 columns again. Rewriting it had joined
+    the lines, and that file is the one document here that wraps.
+
+  Headings are unchanged everywhere, because other pages link to them by anchor,
+  and the four `## <version>` headings are what the release-note check matches on.
+
 ## 2.1.1
 
 ### Patch Changes
