@@ -29,6 +29,7 @@ import {
   EmbeddingModelMismatchError,
   MixedEmbeddingModelsError,
   isPlausibleUpdateTarget,
+  hasTimeFor,
   type AmemPluginConfig,
 } from '@amemhq/core'
 import { createHash } from 'crypto'
@@ -43,6 +44,11 @@ import {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
+
+// agent_end's budget, declared to the host below. The host stops waiting at this point
+// but does not cancel the work, so the hook stops itself a little before it (#158).
+const HOOK_BUDGET_MS = 30_000
+const HOOK_MARGIN_MS = 2_000
 
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
@@ -491,6 +497,7 @@ function register(api: {
         },
         ctx?: AgentCtx
       ) => {
+        const deadline = Date.now() + HOOK_BUDGET_MS - HOOK_MARGIN_MS
         // Story 32 (Issue 1): resolve the per-session agent scope from the hook ctx.
         const scope = buildScope(resolveAgentId(ctx))
         const agentId = scope.agentId
@@ -555,15 +562,22 @@ function register(api: {
           const operations = await llmCrudDecision(
             userText,
             assistantText,
-            existingMemories.map((m) => ({ idx: m.idx, content: m.content }))
+            existingMemories.map((m) => ({ idx: m.idx, content: m.content })),
+            { deadline }
           )
 
           if (!operations || operations.length === 0) return
 
           // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
-          for (const op of operations) {
+          for (const [i, op] of operations.entries()) {
+            // What has been stored stays stored. The rest of this turn's facts are lost,
+            // which is the price of not racing the next turn's hook over the same notes.
+            if (!hasTimeFor(deadline)) {
+              logger.warn(`openclaw-amem: agent_end out of time, stored ${i} of ${operations.length} operations`)
+              break
+            }
             if (op.action === 'NEW') {
-              await addMemory(op.fact, agentId, { storageCtx })
+              await addMemory(op.fact, agentId, { storageCtx, deadline })
               logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`)
             } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
@@ -579,7 +593,7 @@ function register(api: {
                 // and consolidation can merge it later.
                 const targetNote = await storageCtx.getNote(target.id, agentId)
                 if (!targetNote || !isPlausibleUpdateTarget(newEmbedding, targetNote.embedding, crudUpdateMinSim)) {
-                  await addMemory(op.fact, agentId, { storageCtx })
+                  await addMemory(op.fact, agentId, { storageCtx, deadline })
                   logger.warn(
                     `openclaw-amem: CRUD UPDATE on ${target.id.slice(0, 8)} looks mis-targeted — stored as a new memory instead`
                   )
@@ -622,7 +636,7 @@ function register(api: {
           logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
         }
       },
-      { timeoutMs: 30000 }
+      { timeoutMs: HOOK_BUDGET_MS }
     )
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
   }

@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { t } from './prompts.js'
 import { warn } from './config.js'
+import { hasTimeFor, MIN_CALL_MS, type CallOptions } from './deadline.js'
 
 // ── Provider selection ────────────────────────────────────────────────────────
 // The engine's LLM calls are all "prompt in, text out" — no streaming, tools, or
@@ -198,7 +199,23 @@ function openai(baseURL: string | undefined): OpenAI {
 }
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
-export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = 'fast'): Promise<string | null> {
+export async function llmCall(
+  prompt: string,
+  maxTokens = 500,
+  role: LlmRole = 'fast',
+  opts: CallOptions = {}
+): Promise<string | null> {
+  if (!hasTimeFor(opts.deadline)) {
+    warn(`[amem] skipped an LLM call: less than ${MIN_CALL_MS} ms left before the deadline`)
+    return null
+  }
+  // With a deadline, the call gets the time left and no retries. Both SDKs retry twice by
+  // default and retry a timeout too, so one slow call could run to three times the
+  // timeout, long after the host stopped waiting. Background callers keep the retries.
+  const request =
+    opts.deadline === undefined
+      ? undefined
+      : { timeout: Math.min(resolveTimeoutMs(), opts.deadline - Date.now()), maxRetries: 0 }
   const provider = resolveProvider(role)
   const model = resolveModel(role)
   const baseURL = resolveBaseURL(role)
@@ -208,8 +225,8 @@ export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = '
   try {
     const text =
       provider === 'openai'
-        ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL)
-        : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL)
+        ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL, request)
+        : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request)
     // A 200 that carries no text. Every caller treats this exactly like a thrown
     // error, so it is reported here rather than at each of them — otherwise the
     // one failure mode that does not throw is the one nobody hears about.
@@ -221,17 +238,23 @@ export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = '
   }
 }
 
+type RequestLimits = { timeout: number; maxRetries: number }
+
 async function anthropicCall(
   prompt: string,
   model: string,
   maxTokens: number,
-  baseURL: string | undefined
+  baseURL: string | undefined,
+  request?: RequestLimits
 ): Promise<string | null> {
-  const resp = await anthropic(baseURL).messages.create({
-    model,
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  const resp = await anthropic(baseURL).messages.create(
+    {
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    request
+  )
   for (const block of resp.content) {
     if (block.type === 'text') return block.text.trim()
   }
@@ -242,7 +265,8 @@ async function openaiCall(
   prompt: string,
   model: string,
   maxTokens: number,
-  baseURL: string | undefined
+  baseURL: string | undefined,
+  request?: RequestLimits
 ): Promise<string | null> {
   // OpenAI's own reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
   // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
@@ -250,11 +274,14 @@ async function openaiCall(
   // names narrowly: a broad `includes('reason')` would wrongly catch other
   // gateways' models (e.g. DeepSeek's `deepseek-reasoner`, which uses max_tokens).
   const isReasoning = /^o\d/.test(model) || model.startsWith('gpt-5')
-  const resp = await openai(baseURL).chat.completions.create({
-    model,
-    ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-    messages: [{ role: 'user', content: prompt }],
-  })
+  const resp = await openai(baseURL).chat.completions.create(
+    {
+      model,
+      ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+      messages: [{ role: 'user', content: prompt }],
+    },
+    request
+  )
   return resp.choices[0]?.message?.content?.trim() ?? null
 }
 
@@ -346,7 +373,7 @@ const VALID_CATEGORIES = new Set<string>([
   'General',
 ])
 
-export async function llmConstructNote(content: string): Promise<NoteStructure> {
+export async function llmConstructNote(content: string, opts: CallOptions = {}): Promise<NoteStructure> {
   const prompt = `Analyze the following text and respond with valid JSON only (no markdown fences, no explanation, no comments). All string values must use standard double quotes and be properly escaped:
 {
   "keywords": ["keyword1", "keyword2"],
@@ -382,7 +409,7 @@ confidence guide (Story 27):
 
 Text: ${content}`
 
-  const raw = await llmCall(prompt, 400)
+  const raw = await llmCall(prompt, 400, 'fast', opts)
   if (!raw) {
     // The note is still stored after this, with none of these fields filled in.
     // Searching it later finds a note that matches almost nothing.
@@ -435,14 +462,18 @@ Text: ${content}`
 }
 
 // ── Link judgment ─────────────────────────────────────────────────────────────
-export async function llmShouldLink(noteContent: string, candidateContent: string): Promise<boolean> {
+export async function llmShouldLink(
+  noteContent: string,
+  candidateContent: string,
+  opts: CallOptions = {}
+): Promise<boolean> {
   const prompt = `Do these two memory notes have a meaningful relationship that would be useful to link?
 Reply with only "yes" or "no".
 
 Note A: ${noteContent}
 Note B: ${candidateContent}`
 
-  const raw = await llmCall(prompt, 10)
+  const raw = await llmCall(prompt, 10, 'fast', opts)
   if (!raw) return false
   return raw.toLowerCase().startsWith('yes')
 }
@@ -458,7 +489,8 @@ export interface MemoryOperation {
 export async function llmCrudDecision(
   userText: string,
   assistantText: string,
-  existingMemories: Array<{ idx: number; content: string }>
+  existingMemories: Array<{ idx: number; content: string }>,
+  opts: CallOptions = {}
 ): Promise<MemoryOperation[]> {
   const memoryList =
     existingMemories.length > 0 ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n') : '(none)'
@@ -470,7 +502,7 @@ export async function llmCrudDecision(
     // on every turn, and its one destructive failure mode (overwriting the wrong
     // memory) is already handled architecturally by the Story 41 guard rather
     // than by buying a bigger model. Operators who want it on `strong` can say so.
-    const raw = await llmCall(prompt, 400, resolveCrudRole())
+    const raw = await llmCall(prompt, 400, resolveCrudRole(), opts)
     if (!raw) return []
     // Strip reasoning scaffolding first — this path extracts the array straight
     // from the response and would otherwise trip over a <think> block.
@@ -582,7 +614,8 @@ export interface EvolvedNote {
 
 export async function llmEvolveNote(
   content: string,
-  linkedNotes: Array<{ id: string; content: string }>
+  linkedNotes: Array<{ id: string; content: string }>,
+  opts: CallOptions = {}
 ): Promise<EvolvedNote> {
   const linkedStr = linkedNotes.map((n) => `- ID: ${n.id}\n  Content: ${n.content}`).join('\n')
   const prompt = `A memory note has gained new connections. Update its context, tags, and decide whether to strengthen connections with specific neighbors.
@@ -606,7 +639,7 @@ Original note content: ${content}
 Newly linked notes (neighbors):
 ${linkedStr}`
 
-  const raw = await llmCall(prompt, 500)
+  const raw = await llmCall(prompt, 500, 'fast', opts)
   if (!raw) return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
 
   try {
