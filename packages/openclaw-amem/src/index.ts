@@ -33,6 +33,7 @@ import {
 } from '@amemhq/core'
 import { createHash } from 'crypto'
 import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
+import { scheduleNightly, cancelNightly } from './nightly.js'
 import {
   resolveAgentId as resolveAgentIdWith,
   buildScope as buildScopeWith,
@@ -626,16 +627,9 @@ function register(api: {
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
   }
 
-  // ── scheduleNextRun ──────────────────────────────────────────────────────
-  function scheduleNextRun() {
-    const now = new Date()
-    const target = new Date()
-    target.setHours(2, 30, 0, 0)
-    if (target.getTime() <= now.getTime()) {
-      target.setDate(target.getDate() + 1)
-    }
-    const delay = target.getTime() - now.getTime()
-    setTimeout(async () => {
+  // ── nightly job (02:30) — one per process, see nightly.ts ─────────────────
+  scheduleNightly(
+    async () => {
       try {
         logger.info('openclaw-amem: Running scheduled daily consolidation...')
         // Background task — no per-session ctx, operate on the default agent scope.
@@ -671,10 +665,9 @@ function register(api: {
           logger.warn(`openclaw-amem: Scheduled contradiction sweep failed — ${(err as Error).message}`)
         }
       }
-      scheduleNextRun()
-    }, delay)
-  }
-  scheduleNextRun()
+    },
+    (err) => logger.warn(`openclaw-amem: nightly job failed — ${(err as Error).message}`)
+  )
 
   // ── registerService ──────────────────────────────────────────────────────
   if (typeof api.registerService === 'function') {
@@ -684,6 +677,7 @@ function register(api: {
         logger.info(`openclaw-amem: started (backend: amem-qdrant, default agentId: ${defaultScope.agentId})`)
       },
       stop() {
+        cancelNightly()
         logger.info('openclaw-amem: stopped')
       },
     })

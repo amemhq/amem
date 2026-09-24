@@ -5,6 +5,19 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.3
+
+**The nightly cleanup runs once, not several times at once.** The plugin can
+load twice in one gateway, and each copy started its own 02:30 job. Every night
+the same work ran two to four times in parallel, on the same notes. It now runs
+once.
+
+**`openclaw` commands exit when they finish.** A command that loads plugins,
+for example `openclaw --help`, did not exit after it printed its output. The
+plugin held a timer open until 02:30. It no longer does.
+
+There is nothing to configure. Update the plugin. Restart the gateway.
+
 ## 2.1.2
 
 **When memory stops working, the log now says so.** The engine wrote its
