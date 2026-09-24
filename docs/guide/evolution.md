@@ -4,7 +4,7 @@
 
 Unlike flat memory systems that silently overwrite existing notes, openclaw-amem tracks how each memory changes over time.
 
-When new content falls within the 0.72–0.85 cosine similarity zone with an existing note, the system flags it `pending_merge=true`. The system routes it through an **LLM evolution judgment** at `agent_end`, not a force-merge or silent acceptance.
+When new content falls within the 0.72–0.85 cosine similarity zone with an existing note, the system flags it `pending_merge=true`. The 02:30 job routes it through an **LLM evolution judgment**, not a force-merge or silent acceptance.
 
 ### Four evolution paths
 

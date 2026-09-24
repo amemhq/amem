@@ -749,18 +749,24 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Merge semantically similar notes written today.
- * Called asynchronously from agent_end hook; failures are silent.
+ * Merge semantically similar notes written on one UTC day, today by default.
  * Returns the number of notes merged (deleted).
+ *
+ * `date` is "YYYY-MM-DD" and is matched against the note's UTC timestamp. A host that
+ * runs this after local midnight has to pass the previous UTC day as well, or the notes
+ * written late on that day are never visited.
  *
  * Story 30: pending_merge=true notes are routed through LLM evolution judgment
  * (EVOLVE/CONFLICT/EXPAND/NEW) instead of simple merge.
  * Story 32: shared notes (agent_id='shared') are never merged/consolidated.
  */
-export async function mergeSimilarNotes(agentId: string, storageCtx?: StorageContext): Promise<number> {
+export async function mergeSimilarNotes(
+  agentId: string,
+  storageCtx?: StorageContext,
+  date: string = new Date().toISOString().slice(0, 10)
+): Promise<number> {
   const ctx = storageCtx ?? defaultCtx()
-  const today = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
-  const allNotes = await ctx.getNotesByDatePrefix(today, agentId)
+  const allNotes = await ctx.getNotesByDatePrefix(date, agentId)
 
   // Story 32: only process private notes — skip shared entries entirely
   const notes = allNotes.filter((n) => n.agent_id !== 'shared')

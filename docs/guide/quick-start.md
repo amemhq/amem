@@ -44,6 +44,7 @@ Merges semantic duplicates (cosine ≥ 0.75) across the whole store, grouped by 
 
 The plugin schedules **daily consolidation** automatically at **02:30 AM** (in-process `setTimeout`). It:
 
+- Merges near-duplicates and resolves `pending_merge` notes for each agent that wrote since the last run
 - Groups notes by `category`
 - Merges semantic duplicates (cosine ≥ 0.75) into one note, keeping the episodic type
 - Cascades all link references to preserve graph topology
