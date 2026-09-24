@@ -7,6 +7,7 @@ import OpenAI from 'openai'
 import { t } from './prompts.js'
 import { warn } from './config.js'
 import { hasTimeFor, MIN_CALL_MS, type CallOptions } from './deadline.js'
+import { stopIfForegroundBusy } from './background.js'
 
 // ── Provider selection ────────────────────────────────────────────────────────
 // The engine's LLM calls are all "prompt in, text out" — no streaming, tools, or
@@ -205,6 +206,8 @@ export async function llmCall(
   role: LlmRole = 'fast',
   opts: CallOptions = {}
 ): Promise<string | null> {
+  // Outside the try below: a preempted nightly step has to stop, not read as a failed call.
+  stopIfForegroundBusy()
   if (!hasTimeFor(opts.deadline)) {
     warn(`[amem] skipped an LLM call: less than ${MIN_CALL_MS} ms left before the deadline`)
     return null
@@ -222,8 +225,9 @@ export async function llmCall(
   // Gemini thinking models consume extra tokens for reasoning; scale up automatically
   const isThinking = model.includes('gemini') || model.includes('pro-agent')
   const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
+  let text: string | null = null
   try {
-    const text =
+    text =
       provider === 'openai'
         ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL, request)
         : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request)
@@ -231,11 +235,13 @@ export async function llmCall(
     // error, so it is reported here rather than at each of them — otherwise the
     // one failure mode that does not throw is the one nobody hears about.
     if (text === null) warn(`[amem] ${provider} answered with no text (model ${model})`)
-    return text
   } catch (e) {
     warn(`[amem] LLM call failed: ${(e as Error).message}`)
-    return null
   }
+  // Again after the call: a run that came and went while it was out may have written notes
+  // the nightly step read before it. Stopping here comes before the caller writes anything.
+  stopIfForegroundBusy()
+  return text
 }
 
 type RequestLimits = { timeout: number; maxRetries: number }
@@ -692,24 +698,28 @@ export interface ConflictPair {
  *
  * Indices are validated against the batch size, so a hallucinated number is
  * dropped rather than mis-targeting a note (the Story 41 lesson).
+ *
+ * Null means the model gave no usable answer. An empty list means it read the batch
+ * and found nothing. The sweep marks a batch as scanned only on a list.
  */
-export async function llmConflictScan(contents: string[]): Promise<ConflictPair[]> {
+export async function llmConflictScan(contents: string[]): Promise<ConflictPair[] | null> {
   if (contents.length < 2) return []
   const numbered = contents.map((c, i) => `[${i}] ${c}`).join('\n')
 
+  // Outside the try: a preempted nightly step has to stop, not read as no answer.
+  const raw = await llmCall(t.conflictScan(numbered), 600, 'strong')
+  if (!raw) return null
   try {
-    const raw = await llmCall(t.conflictScan(numbered), 600, 'strong')
-    if (!raw) return []
     const cleaned = stripReasoning(raw)
     const match = cleaned.match(/\[[\s\S]*\]/)
     if (!match) {
-      warn('[amem] llmConflictScan found no array in the response; this sweep reports no pairs')
-      return []
+      warn('[amem] llmConflictScan found no array in the response; the batch is read again next run')
+      return null
     }
     const parsed = JSON.parse(match[0])
     if (!Array.isArray(parsed)) {
-      warn('[amem] llmConflictScan parsed a non-array; this sweep reports no pairs')
-      return []
+      warn('[amem] llmConflictScan parsed a non-array; the batch is read again next run')
+      return null
     }
 
     const pairs: ConflictPair[] = []
@@ -738,9 +748,14 @@ export async function llmConflictScan(contents: string[]): Promise<ConflictPair[
         supersededIndex,
       })
     }
+    // Entries that all fail the checks, 1-based indices for example, are no answer either.
+    if (parsed.length > 0 && pairs.length === 0) {
+      warn('[amem] llmConflictScan got no valid pair in the response; the batch is read again next run')
+      return null
+    }
     return pairs
   } catch (e) {
     warn(`[amem] llmConflictScan failed: ${(e as Error).message}`)
-    return []
+    return null
   }
 }

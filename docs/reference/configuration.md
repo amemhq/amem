@@ -109,7 +109,8 @@ So a sweep runs nightly, after the daily consolidation, in batches, on the **str
 
 It only re-reads batches that **gained a memory** since the last run. The first
 night costs roughly one call per 25 memories, and every night after that costs one
-or two. The tradeoff is worth stating. The engine compares a new memory against the batch
+or two. The sweep does not mark a batch that the model gave no usable answer for, so the
+next run reads it again. The tradeoff is worth stating. The engine compares a new memory against the batch
 it lands in — its category's most recent — not against the entire history. The engine does not find a
 contradiction between two old memories that never shared a batch.
 To force a full re-read, clear `conflict_scanned_at`. It hands the model a
