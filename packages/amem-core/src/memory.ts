@@ -19,6 +19,7 @@ import {
   llmConflictScan,
 } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
+import { hasTimeFor } from './deadline.js'
 import { getDataDir, warn as engineWarn } from './config.js'
 import { Jieba } from '@node-rs/jieba'
 
@@ -170,6 +171,12 @@ export async function addMemory(
      * the world or the agent itself, and stays visible whoever is present.
      */
     subjects?: string[]
+    /**
+     * Epoch ms after which no new LLM call starts. agent_end passes one, because the
+     * host stops waiting at its budget. Linking and evolution stop early, so the note is
+     * stored with fewer links rather than not at all. Absent: no limit.
+     */
+    deadline?: number
   }
 ): Promise<string> {
   const scope = opts?.scope ?? 'private'
@@ -197,7 +204,8 @@ export async function addMemory(
   console.log('[add] Constructing note...')
 
   // Step 1: Note Construction
-  const { keywords, tags, context, category, note_type, topics } = await llmConstructNote(content)
+  const deadline = opts?.deadline
+  const { keywords, tags, context, category, note_type, topics } = await llmConstructNote(content, { deadline })
   console.log(`  keywords: ${keywords.join(', ')}`)
   console.log(`  tags: ${tags.join(', ')}`)
   console.log(`  context: ${context}`)
@@ -287,9 +295,10 @@ export async function addMemory(
       for (const { note: cand, score } of candidates) {
         if (cand.id === note.id) continue
         if (score < 0.3) continue
+        if (!hasTimeFor(deadline)) break
 
         console.log(`  candidate ${cand.id.slice(0, 8)}... sim=${score.toFixed(3)}, asking LLM...`)
-        const shouldLink = await llmShouldLink(content, cand.content)
+        const shouldLink = await llmShouldLink(content, cand.content, { deadline })
         if (shouldLink) {
           linkedIds.push(cand.id)
           linkedContents.push(cand.content)
@@ -320,6 +329,7 @@ export async function addMemory(
         if (shouldRunEvolution()) {
           console.log(`  [evo] threshold reached, running evolution for ${Math.min(linkedIds.length, 3)} linked notes`)
           for (const lid of linkedIds.slice(0, 3)) {
+            if (!hasTimeFor(deadline)) break
             const linked = await ctx.getNote(lid, agentId)
             if (!linked) continue
             // Story 33: evolution rewrites the linked note's tags/context/embedding.
@@ -351,7 +361,7 @@ export async function addMemory(
               shouldStrengthen,
               suggestedConnections,
               tagsToUpdate,
-            } = await llmEvolveNote(linked.content, linkedNotes)
+            } = await llmEvolveNote(linked.content, linkedNotes, { deadline })
 
             let evolved = false
 

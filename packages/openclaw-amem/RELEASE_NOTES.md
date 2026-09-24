@@ -22,6 +22,12 @@ limit, so it often took the memory step past its 30-second budget. It now runs
 at 02:30, for every agent that saved memories since the previous run. A
 near-duplicate you save during the day stays separate until then.
 
+**A slow turn no longer runs past its time limit.** After each turn, the plugin
+has 30 seconds to save what it learned. When the model was slow, the work went
+on after that limit and ran into the next turn. It now stops before the limit
+and keeps what it has saved. If the model is very slow, some facts from that
+turn are not saved.
+
 There is nothing to configure. Update the plugin. Restart the gateway.
 
 ## 2.1.2
