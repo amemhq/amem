@@ -33,7 +33,7 @@ import {
 } from '@amemhq/core'
 import { createHash } from 'crypto'
 import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
-import { scheduleNightly, cancelNightly } from './nightly.js'
+import { scheduleNightly, cancelNightly, markOwed, readOwed, settleOwed, utcDatesSince } from './nightly.js'
 import {
   resolveAgentId as resolveAgentIdWith,
   buildScope as buildScopeWith,
@@ -126,6 +126,18 @@ function register(api: {
   const defaultScope = buildScope(resolveAgentId())
   const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
+  // The nightly merge visits only the agents that wrote since it last ran (nightly.ts).
+  // Recorded by raw agent id, because the night rebuilds each scope with buildScope.
+  // A failure here must not cost the write it follows, so it only warns.
+  const owedFile = path.join(os.homedir(), '.openclaw', 'amem_nightly_owed.json')
+  const owe = (rawAgentId: string) => {
+    try {
+      markOwed(owedFile, rawAgentId)
+    } catch (err) {
+      logger.warn(`openclaw-amem: could not record ${rawAgentId} for the nightly merge — ${(err as Error).message}`)
+    }
+  }
+
   logger.info(
     `openclaw-amem: registered (native TS, Qdrant, default agent_id=${defaultScope.agentId}, default collection=${pluginConfig.collection ?? 'amem_notes (default)'}, per-agent scope resolved per call)`
   )
@@ -193,6 +205,7 @@ function register(api: {
                 async add(text: string) {
                   try {
                     await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
+                    owe(resolveAgentId(params))
                     return { ok: true }
                   } catch (err) {
                     logger.warn(`openclaw-amem: add failed — ${(err as Error).message}`)
@@ -331,6 +344,7 @@ function register(api: {
             const start = Date.now()
             try {
               const id = await addMemory(text, scope.agentId, { subjects, storageCtx: scope.storageCtx })
+              owe(resolveAgentId(ctx))
               logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
               return {
                 content: [{ type: 'text', text: 'Memory saved successfully.' }],
@@ -602,22 +616,8 @@ function register(api: {
             }
             // NONE: skip
           }
-
-          // 同步触发碎片合并（Story 29: 改为 await 确保执行完毕）
-          const today = new Date().toISOString().slice(0, 10)
-          logger.info(`openclaw-amem: starting mergeSimilarNotes for agent=${agentId}, date=${today}`)
-          try {
-            const merged = await mergeSimilarNotes(agentId, storageCtx)
-            if (merged > 0) {
-              logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
-            } else {
-              logger.info(`openclaw-amem: mergeSimilarNotes completed, 0 pairs merged (${today})`)
-            }
-          } catch (mergeErr) {
-            logger.error(
-              `openclaw-amem: mergeSimilarNotes FAILED — ${(mergeErr as Error).message}\n${(mergeErr as Error).stack}`
-            )
-          }
+          // After the writes, so the recorded time is never earlier than the notes it covers.
+          owe(resolveAgentId(ctx))
         } catch (e) {
           logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
         }
@@ -630,6 +630,30 @@ function register(api: {
   // ── nightly job (02:30) — one per process, see nightly.ts ─────────────────
   scheduleNightly(
     async () => {
+      // Same-day merging used to run inside agent_end, once per turn. It carries the one
+      // uncapped term in that hook (an evolution judgment per pending note) and up to ten
+      // merge checks, so it runs here instead, for every agent that wrote (#158). The
+      // default agent is always included, as the nightly jobs always have been.
+      try {
+        const startedAt = new Date()
+        const owed = readOwed(owedFile)
+        const days = utcDatesSince(owed.lastRun, startedAt)
+        for (const rawAgentId of new Set([resolveAgentId(), ...owed.agents])) {
+          const scope = buildScope(rawAgentId)
+          for (const day of days) {
+            try {
+              const merged = await mergeSimilarNotes(scope.agentId, scope.storageCtx, day)
+              if (merged > 0) logger.info(`openclaw-amem: merged ${merged} similar notes (${scope.agentId}, ${day})`)
+            } catch (err) {
+              logger.warn(`openclaw-amem: merge failed (${scope.agentId}, ${day}) — ${(err as Error).message}`)
+            }
+          }
+        }
+        settleOwed(owedFile, startedAt)
+      } catch (err) {
+        logger.warn(`openclaw-amem: nightly merge failed — ${(err as Error).message}`)
+      }
+
       try {
         logger.info('openclaw-amem: Running scheduled daily consolidation...')
         // Background task — no per-session ctx, operate on the default agent scope.

@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { msUntil, scheduleNightly, cancelNightly } from '../../src/nightly.js'
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
+import {
+  msUntil,
+  scheduleNightly,
+  cancelNightly,
+  markOwed,
+  readOwed,
+  settleOwed,
+  utcDatesSince,
+} from '../../src/nightly.js'
 
 const SLOT = Symbol.for('openclaw-amem.nightly-timer')
 const noop = () => {}
@@ -100,5 +111,70 @@ describe('scheduleNightly', () => {
 
     expect(job).not.toHaveBeenCalled()
     expect(pending()).toBeUndefined()
+  })
+})
+
+describe('utcDatesSince', () => {
+  it('covers yesterday and today when there has been no run', () => {
+    expect(utcDatesSince(undefined, new Date('2026-09-25T18:30:00Z'))).toEqual(['2026-09-24', '2026-09-25'])
+  })
+
+  it('visits the UTC day of the last run again, because 02:30 local falls partway through it', () => {
+    // 02:30 in UTC+8 is 18:30 UTC. Notes written after that on the 24th were not read last night.
+    expect(utcDatesSince(new Date('2026-09-24T18:30:00Z'), new Date('2026-09-25T18:30:00Z'))).toEqual([
+      '2026-09-24',
+      '2026-09-25',
+    ])
+  })
+
+  it('covers every day a missed night skipped', () => {
+    expect(utcDatesSince(new Date('2026-09-22T18:30:00Z'), new Date('2026-09-25T18:30:00Z'))).toEqual([
+      '2026-09-22',
+      '2026-09-23',
+      '2026-09-24',
+      '2026-09-25',
+    ])
+  })
+
+  it('keeps only the most recent seven days after a long gap', () => {
+    const days = utcDatesSince(new Date('2026-08-01T00:00:00Z'), new Date('2026-09-25T18:30:00Z'))
+    expect(days).toHaveLength(7)
+    expect(days[0]).toBe('2026-09-19')
+    expect(days[6]).toBe('2026-09-25')
+  })
+})
+
+describe('owed agents', () => {
+  const fresh = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'amem-owed-')), 'sub', 'owed.json')
+
+  it('records each agent once, and creates the directory', () => {
+    const file = fresh()
+    markOwed(file, 'main')
+    markOwed(file, 'dev')
+    markOwed(file, 'main')
+    expect(readOwed(file).agents.sort()).toEqual(['dev', 'main'])
+    expect(readOwed(file).lastRun).toBeUndefined()
+  })
+
+  it('treats a missing or corrupt file as nothing owed', () => {
+    const file = fresh()
+    expect(readOwed(file)).toEqual({ agents: [], lastRun: undefined })
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, '{not json')
+    expect(readOwed(file).agents).toEqual([])
+    markOwed(file, 'main')
+    expect(readOwed(file).agents).toEqual(['main'])
+  })
+
+  it('keeps an agent that wrote after the run began, and records when the run began', () => {
+    const file = fresh()
+    const startedAt = new Date('2026-09-25T18:30:00Z')
+    markOwed(file, 'main', new Date('2026-09-25T10:00:00Z'))
+    markOwed(file, 'dev', new Date('2026-09-25T18:30:05Z')) // wrote while the run was reading
+
+    settleOwed(file, startedAt)
+
+    expect(readOwed(file).agents).toEqual(['dev'])
+    expect(readOwed(file).lastRun?.toISOString()).toBe(startedAt.toISOString())
   })
 })

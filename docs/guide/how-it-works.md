@@ -67,10 +67,11 @@ When a memory is updated or contradicted, amem marks the old note `is_active: fa
 
 At **02:30 AM** (in-process scheduler), the plugin:
 
-1. Groups active episodic notes by `category` — knowledge notes are skipped
-2. Within each group, finds pairs with cosine similarity ≥ 0.75
-3. Merges duplicates into a single unified note
-4. Cascades all link references from soft-deleted notes to the merged note
+1. For each agent that wrote since the last run, resolves its `pending_merge` notes and merges near-duplicates it wrote since then (cosine ≥ 0.80)
+2. Groups active episodic notes by `category` — knowledge notes are skipped
+3. Within each group, finds pairs with cosine similarity ≥ 0.75
+4. Merges duplicates into a single unified note
+5. Cascades all link references from soft-deleted notes to the merged note
 
 This process prevents memory bloat from semantically redundant facts that accumulate over days.
 
@@ -84,7 +85,7 @@ Every `memory_add` call passes through three dedup layers before reaching Qdrant
 | L2 | Vector similarity | ≥ 0.85 | UPDATE existing note |
 | L2.5 | Vector similarity | 0.72 ≤ s < 0.85 | Write + flag `pending_merge=true` |
 
-The `agent_end` hook processes `pending_merge` notes via LLM evolution judgment. See [Evolution & Quality](/guide/evolution) for details.
+The 02:30 job resolves `pending_merge` notes through LLM evolution judgment. See [Evolution & Quality](/guide/evolution) for details.
 
 ## Agent isolation
 

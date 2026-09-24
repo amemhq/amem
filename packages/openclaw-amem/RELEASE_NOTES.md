@@ -16,6 +16,12 @@ once.
 for example `openclaw --help`, did not exit after it printed its output. The
 plugin held a timer open until 02:30. It no longer does.
 
+**Similar memories are merged at night instead of after every turn.** The
+merge was the slowest step after each turn, and the only step with no upper
+limit, so it often took the memory step past its 30-second budget. It now runs
+at 02:30, for every agent that saved memories since the previous run. A
+near-duplicate you save during the day stays separate until then.
+
 There is nothing to configure. Update the plugin. Restart the gateway.
 
 ## 2.1.2
