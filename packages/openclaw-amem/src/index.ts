@@ -30,11 +30,26 @@ import {
   MixedEmbeddingModelsError,
   isPlausibleUpdateTarget,
   hasTimeFor,
+  runInBackground,
+  BackgroundPreempted,
   type AmemPluginConfig,
 } from '@amemhq/core'
 import { createHash } from 'crypto'
 import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
-import { scheduleNightly, cancelNightly, markOwed, readOwed, settleOwed, utcDatesSince } from './nightly.js'
+import {
+  scheduleNightly,
+  cancelNightly,
+  markOwed,
+  runNightly,
+  watchAgentEvents,
+  unwatchAgentEvents,
+  foregroundWorkStarted,
+  compactionStarted,
+  compactionEnded,
+  noteMessageReceived,
+  busySinceNow,
+  type AgentEvent,
+} from './nightly.js'
 import {
   resolveAgentId as resolveAgentIdWith,
   buildScope as buildScopeWith,
@@ -136,9 +151,9 @@ function register(api: {
   // Recorded by raw agent id, because the night rebuilds each scope with buildScope.
   // A failure here must not cost the write it follows, so it only warns.
   const owedFile = path.join(os.homedir(), '.openclaw', 'amem_nightly_owed.json')
-  const owe = (rawAgentId: string) => {
+  const owe = (rawAgentId: string, since: Date) => {
     try {
-      markOwed(owedFile, rawAgentId)
+      markOwed(owedFile, rawAgentId, since)
     } catch (err) {
       logger.warn(`openclaw-amem: could not record ${rawAgentId} for the nightly merge — ${(err as Error).message}`)
     }
@@ -210,8 +225,9 @@ function register(api: {
                 },
                 async add(text: string) {
                   try {
+                    const since = new Date()
                     await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
-                    owe(resolveAgentId(params))
+                    owe(resolveAgentId(params), since)
                     return { ok: true }
                   } catch (err) {
                     logger.warn(`openclaw-amem: add failed — ${(err as Error).message}`)
@@ -350,7 +366,7 @@ function register(api: {
             const start = Date.now()
             try {
               const id = await addMemory(text, scope.agentId, { subjects, storageCtx: scope.storageCtx })
-              owe(resolveAgentId(ctx))
+              owe(resolveAgentId(ctx), new Date(start))
               logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
               return {
                 content: [{ type: 'text', text: 'Memory saved successfully.' }],
@@ -488,6 +504,20 @@ function register(api: {
   // ── agent_end hook: auto-capture memories after each turn ─────────────────
   if (typeof (api as any).registerHook === 'function' || typeof (api as any).on === 'function') {
     const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
+
+    // Foreground work that sends no run events, so the nightly job cannot see it otherwise
+    // (#158). A compaction runs the user's model before a turn. A channel turn bound to an
+    // ACP session reaches plugins only as the incoming message.
+    hookFn('before_compaction', (_event: unknown, ctx?: { sessionKey?: string; sessionId?: string }) =>
+      compactionStarted(ctx)
+    )
+    hookFn('after_compaction', (_event: unknown, ctx?: { sessionKey?: string; sessionId?: string }) =>
+      compactionEnded(ctx)
+    )
+    hookFn('message_received', (event?: { providerUpdate?: { kind?: string; editedTimestamp?: number } }) =>
+      noteMessageReceived(event)
+    )
+
     hookFn(
       'agent_end',
       async (
@@ -505,6 +535,10 @@ function register(api: {
         logger.info(
           `openclaw-amem: agent_end hook triggered (agent_id=${agentId}, success=${event.success}, messages=${event.messages?.length ?? 0})`
         )
+        // The nightly job does not start a step while this writes (#158).
+        const done = foregroundWorkStarted()
+        // Set just before the first write. The nightly merge reads from here on.
+        let since: Date | undefined
         try {
           if (!event.success) {
             logger.info('openclaw-amem: agent_end skipped — event.success is false')
@@ -569,6 +603,7 @@ function register(api: {
           if (!operations || operations.length === 0) return
 
           // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
+          since = new Date()
           for (const [i, op] of operations.entries()) {
             // What has been stored stays stored. The rest of this turn's facts are lost,
             // which is the price of not racing the next turn's hook over the same notes.
@@ -630,10 +665,12 @@ function register(api: {
             }
             // NONE: skip
           }
-          // After the writes, so the recorded time is never earlier than the notes it covers.
-          owe(resolveAgentId(ctx))
         } catch (e) {
           logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
+        } finally {
+          // Also after an operation that threw: the ones before it may have stored notes.
+          if (since) owe(resolveAgentId(ctx), since)
+          done()
         }
       },
       { timeoutMs: HOOK_BUDGET_MS }
@@ -642,68 +679,63 @@ function register(api: {
   }
 
   // ── nightly job (02:30) — one per process, see nightly.ts ─────────────────
+  // It stays out of the way of the user's runs (#158). Inside runInBackground an LLM call
+  // throws BackgroundPreempted once anything has happened in the gateway since the step
+  // began, and the step runs again from a fresh read when the gateway is idle.
   scheduleNightly(
-    async () => {
-      // Same-day merging used to run inside agent_end, once per turn. It carries the one
-      // uncapped term in that hook (an evolution judgment per pending note) and up to ten
-      // merge checks, so it runs here instead, for every agent that wrote (#158). The
-      // default agent is always included, as the nightly jobs always have been.
-      try {
-        const startedAt = new Date()
-        const owed = readOwed(owedFile)
-        const days = utcDatesSince(owed.lastRun, startedAt)
-        for (const rawAgentId of new Set([resolveAgentId(), ...owed.agents])) {
+    () =>
+      runNightly({
+        owedFile,
+        defaultAgent: resolveAgentId(),
+        mergeDay: async (rawAgentId, day) => {
           const scope = buildScope(rawAgentId)
-          for (const day of days) {
-            try {
-              const merged = await mergeSimilarNotes(scope.agentId, scope.storageCtx, day)
-              if (merged > 0) logger.info(`openclaw-amem: merged ${merged} similar notes (${scope.agentId}, ${day})`)
-            } catch (err) {
-              logger.warn(`openclaw-amem: merge failed (${scope.agentId}, ${day}) — ${(err as Error).message}`)
-            }
-          }
-        }
-        settleOwed(owedFile, startedAt)
-      } catch (err) {
-        logger.warn(`openclaw-amem: nightly merge failed — ${(err as Error).message}`)
-      }
-
-      try {
-        logger.info('openclaw-amem: Running scheduled daily consolidation...')
-        // Background task — no per-session ctx, operate on the default agent scope.
-        const merged = await consolidateMemories(defaultScope.agentId, logger, defaultScope.storageCtx)
-        if (merged > 0) {
-          logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
-        }
-      } catch (err) {
-        logger.warn(`openclaw-amem: Scheduled daily consolidation failed — ${(err as Error).message}`)
-      }
-
-      // Story 43: the cold half of the tiering split. The per-turn CRUD decision
-      // runs on the fast model, which is safe but misses contradictions; this is
-      // what catches them. Runs AFTER consolidation, and in its own try/catch, so
-      // neither task can take the other down.
-      //
-      // Only batches that gained a note since the last run are re-read, so a
-      // steady-state night costs a call or two rather than a full re-read.
-      if (conflictSweepEnabled) {
-        try {
-          const res = await conflictSweep(defaultScope.agentId, {
-            storageCtx: defaultScope.storageCtx,
-            logger,
-          })
-          if (res.pairsFound > 0) {
-            logger.info(
-              `openclaw-amem: Contradiction sweep flagged ${res.pairsFound} pair(s)` +
-                (res.retired > 0 ? `, retired ${res.retired}` : '') +
-                ` (${res.batchesScanned} batch(es) read, ${res.batchesSkipped} unchanged).`
-            )
-          }
-        } catch (err) {
-          logger.warn(`openclaw-amem: Scheduled contradiction sweep failed — ${(err as Error).message}`)
-        }
-      }
-    },
+          const merged = await mergeSimilarNotes(scope.agentId, scope.storageCtx, day)
+          if (merged > 0) logger.info(`openclaw-amem: merged ${merged} similar notes (${scope.agentId}, ${day})`)
+        },
+        after: [
+          {
+            name: 'consolidation',
+            run: async () => {
+              logger.info('openclaw-amem: Running scheduled daily consolidation...')
+              // Background task — no per-session ctx, operate on the default agent scope.
+              const merged = await consolidateMemories(defaultScope.agentId, logger, defaultScope.storageCtx)
+              if (merged > 0) {
+                logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
+              }
+            },
+          },
+          // Story 43: the cold half of the tiering split. The per-turn CRUD decision
+          // runs on the fast model, which is safe but misses contradictions; this is
+          // what catches them. Runs AFTER consolidation, as its own step, so neither
+          // task can take the other down.
+          //
+          // Only batches that gained a note since the last run are re-read, so a
+          // steady-state night costs a call or two rather than a full re-read.
+          ...(conflictSweepEnabled
+            ? [
+                {
+                  name: 'contradiction sweep',
+                  run: async () => {
+                    const res = await conflictSweep(defaultScope.agentId, {
+                      storageCtx: defaultScope.storageCtx,
+                      logger,
+                    })
+                    if (res.pairsFound > 0) {
+                      logger.info(
+                        `openclaw-amem: Contradiction sweep flagged ${res.pairsFound} pair(s)` +
+                          (res.retired > 0 ? `, retired ${res.retired}` : '') +
+                          ` (${res.batchesScanned} batch(es) read, ${res.batchesSkipped} unchanged).`
+                      )
+                    }
+                  },
+                },
+              ]
+            : []),
+        ],
+        inBackground: (work) => runInBackground(busySinceNow(), work),
+        preempted: (err) => err instanceof BackgroundPreempted,
+        logger,
+      }),
     (err) => logger.warn(`openclaw-amem: nightly job failed — ${(err as Error).message}`)
   )
 
@@ -712,10 +744,21 @@ function register(api: {
     api.registerService({
       id: 'amem-plugin',
       start() {
+        // Here and not in register(): OpenClaw also registers plugins in a cli-metadata mode,
+        // where reading api.runtime throws.
+        const events = (api as any).runtime?.events
+        if (typeof events?.onAgentEvent === 'function') {
+          watchAgentEvents((listener: (evt: AgentEvent) => void) => events.onAgentEvent(listener))
+        } else {
+          logger.warn(
+            'openclaw-amem: this OpenClaw does not report runs to plugins, so the nightly job cannot wait for them'
+          )
+        }
         logger.info(`openclaw-amem: started (backend: amem-qdrant, default agentId: ${defaultScope.agentId})`)
       },
       stop() {
         cancelNightly()
+        unwatchAgentEvents()
         logger.info('openclaw-amem: stopped')
       },
     })

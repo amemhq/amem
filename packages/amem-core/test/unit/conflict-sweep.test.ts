@@ -232,10 +232,7 @@ describe('conflictSweep — incremental re-reading', () => {
     // The unit judged is the batch as a whole; marking only paired notes would
     // make the same batch look unread and cost a call every night forever.
     conflictScan.mockResolvedValue([])
-    const ctx = makeCtx([
-      scanned('a', '2026-01-01T00:00:00.000Z'),
-      scanned('b', '2026-01-02T00:00:00.000Z'),
-    ])
+    const ctx = makeCtx([scanned('a', '2026-01-01T00:00:00.000Z'), scanned('b', '2026-01-02T00:00:00.000Z')])
 
     await conflictSweep('main', { storageCtx: ctx })
 
@@ -244,6 +241,17 @@ describe('conflictSweep — incremental re-reading', () => {
       .mock.calls.filter((c) => (c[1] as Record<string, unknown>).conflict_scanned_at)
       .map((c) => c[0])
     expect(marked.sort()).toEqual(['a', 'b'])
+  })
+
+  it('does not mark a batch the model gave no answer for, so the next run reads it', async () => {
+    // Marked, it would be skipped every night after: one failed call, never scanned again.
+    conflictScan.mockResolvedValue(null)
+    const ctx = makeCtx([scanned('a', '2026-01-01T00:00:00.000Z'), scanned('b', '2026-01-02T00:00:00.000Z')])
+
+    const res = await conflictSweep('main', { storageCtx: ctx })
+
+    expect(ctx.patchNotePayload).not.toHaveBeenCalled()
+    expect(res.batchesFailed).toBe(1)
   })
 
   it('force re-reads batches that were already scanned', async () => {

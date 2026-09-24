@@ -68,10 +68,18 @@ describe('llmConflictScan', () => {
 
   it('drops a hallucinated out-of-range index instead of mis-targeting a note', async () => {
     // The Story 41 lesson: a bad index must never reach a real memory.
-    anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":99,"reason":"nonsense"}]'))
+    anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":99,"reason":"nonsense"},{"a":0,"b":2,"reason":"diet"}]'))
     const { llmConflictScan } = await loadLlm()
 
-    expect(await llmConflictScan(THREE)).toEqual([])
+    expect(await llmConflictScan(THREE)).toEqual([{ a: 0, b: 2, reason: 'diet', supersededIndex: null }])
+  })
+
+  it('returns null when every entry fails the checks, as with 1-based indices', async () => {
+    // Not "read, nothing found": the sweep would mark the batch and never read it again.
+    anthropicCreate.mockResolvedValue(reply('[{"a":1,"b":3,"reason":"1-based"}]'))
+    const { llmConflictScan } = await loadLlm()
+
+    expect(await llmConflictScan(THREE)).toBeNull()
   })
 
   it('drops a self-pair and de-duplicates a repeated pair', async () => {
@@ -82,7 +90,7 @@ describe('llmConflictScan', () => {
 
     const pairs = await llmConflictScan(THREE)
     expect(pairs).toHaveLength(1)
-    expect(pairs[0]).toMatchObject({ a: 0, b: 2 })
+    expect(pairs![0]).toMatchObject({ a: 0, b: 2 })
   })
 
   it('returns nothing when the model finds no contradiction', async () => {
@@ -91,10 +99,17 @@ describe('llmConflictScan', () => {
     expect(await llmConflictScan(THREE)).toEqual([])
   })
 
-  it('degrades to nothing on unparseable output rather than throwing', async () => {
+  it('returns null, not an empty list, on unparseable output', async () => {
+    // An empty list means "read, nothing found", and the sweep marks that batch as scanned.
     anthropicCreate.mockResolvedValue(reply('I could not do that.'))
     const { llmConflictScan } = await loadLlm()
-    expect(await llmConflictScan(THREE)).toEqual([])
+    expect(await llmConflictScan(THREE)).toBeNull()
+  })
+
+  it('returns null when the call fails', async () => {
+    anthropicCreate.mockRejectedValueOnce(new Error('529 overloaded'))
+    const { llmConflictScan } = await loadLlm()
+    expect(await llmConflictScan(THREE)).toBeNull()
   })
 
   it('tolerates a <think> block around the array', async () => {
@@ -127,7 +142,7 @@ describe('llmConflictScan — the superseded marker', () => {
     anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":0,"reason":"r"}]'))
     const { llmConflictScan } = await loadLlm()
 
-    expect((await llmConflictScan(THREE))[0].supersededIndex).toBe(0)
+    expect((await llmConflictScan(THREE))![0].supersededIndex).toBe(0)
   })
 
   it('treats a superseded index outside the pair as unknown, not as a target', async () => {
@@ -136,14 +151,14 @@ describe('llmConflictScan — the superseded marker', () => {
     anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":1,"reason":"r"}]'))
     const { llmConflictScan } = await loadLlm()
 
-    expect((await llmConflictScan(THREE))[0].supersededIndex).toBeNull()
+    expect((await llmConflictScan(THREE))![0].supersededIndex).toBeNull()
   })
 
   it('accepts an explicit null as "cannot tell"', async () => {
     anthropicCreate.mockResolvedValue(reply('[{"a":0,"b":2,"superseded":null,"reason":"r"}]'))
     const { llmConflictScan } = await loadLlm()
 
-    expect((await llmConflictScan(THREE))[0].supersededIndex).toBeNull()
+    expect((await llmConflictScan(THREE))![0].supersededIndex).toBeNull()
   })
 
   it('asks the model to judge from wording, and warns the list is not chronological', async () => {

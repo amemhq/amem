@@ -28,6 +28,23 @@ on after that limit and ran into the next turn. It now stops before the limit
 and keeps what it has saved. If the model is very slow, some facts from that
 turn are not saved.
 
+**The nightly cleanup waits for your tasks.** It runs at 02:30 in the same
+gateway as your agent, with the same API key. If a task ran at that time, the
+two competed for the model, and the cleanup could merge away a memory that the
+task had just saved. The cleanup now starts only when no task is running. If a
+task starts while the cleanup runs, the cleanup stops. It starts that part again
+when the task is done. If the same part stops three times, or the cleanup waits
+more than one hour in a night, it leaves the rest for the next night. The next
+night starts where it stopped.
+
+The cleanup cannot see a task that runs in a separate process, for example
+`openclaw agent --local`.
+
+**A contradiction check that fails is done again.** When the model gave no
+usable answer for a group of memories, the check still marked the group as
+done. It never checked that group again. Now it checks the group again the next
+night.
+
 There is nothing to configure. Update the plugin. Restart the gateway.
 
 ## 2.1.2

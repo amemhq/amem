@@ -20,6 +20,7 @@ import {
 } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 import { hasTimeFor } from './deadline.js'
+import { pauseForForeground, stopIfForegroundBusy } from './background.js'
 import { getDataDir, warn as engineWarn } from './config.js'
 import { Jieba } from '@node-rs/jieba'
 
@@ -801,6 +802,9 @@ export async function mergeSimilarNotes(
     }
 
     if (!bestNeighbor) {
+      // Every other write on the nightly path comes right after an llmCall, which checks
+      // for the user's work. This one does not, so it checks here.
+      stopIfForegroundBusy()
       await ctx.patchNotePayload(pendingNote.id, { pending_merge: false })
       continue
     }
@@ -974,6 +978,9 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
   for (const [category, groupNotes] of groups.entries()) {
     log.info(`[Consolidation] Category "${category}" has ${groupNotes.length} notes.`)
     for (let i = 0; i < groupNotes.length; i++) {
+      // The whole loop is about 0.7 s per 1000 notes, all of it on the gateway's event loop.
+      // In the nightly job, let a run's work through between rows and stop for it.
+      await pauseForForeground()
       for (let j = i + 1; j < groupNotes.length; j++) {
         const noteA = groupNotes[i]
         const noteB = groupNotes[j]
@@ -1137,6 +1144,8 @@ export interface ConflictSweepResult {
   retired: number
   batchesScanned: number
   batchesSkipped: number
+  /** Batches the model gave no usable answer for. They stay unmarked and are read next run. */
+  batchesFailed: number
 }
 
 /**
@@ -1185,6 +1194,7 @@ export async function conflictSweep(
 
   let batchesScanned = 0
   let batchesSkipped = 0
+  let batchesFailed = 0
 
   for (const [category, groupNotes] of groups.entries()) {
     // Newest first, so a note written today batches with the most recent notes
@@ -1212,6 +1222,11 @@ export async function conflictSweep(
       batchesScanned++
 
       const pairs = await llmConflictScan(batch.map((n) => n.content))
+      // No answer is not "no contradictions". Marking the batch would skip it every night after.
+      if (pairs === null) {
+        batchesFailed++
+        continue
+      }
       for (const { a, b, reason, supersededIndex } of pairs) {
         const noteA = batch[a]
         const noteB = batch[b]
@@ -1266,8 +1281,9 @@ export async function conflictSweep(
   }
 
   log(
-    `[conflict] ${batchesScanned} batch(es) scanned, ${batchesSkipped} already up to date; ` +
-      `${pairsFound} pair(s) found, ${retired} retired`
+    `[conflict] ${batchesScanned} batch(es) scanned, ${batchesSkipped} already up to date` +
+      (batchesFailed > 0 ? `, ${batchesFailed} with no answer (read again next run)` : '') +
+      `; ${pairsFound} pair(s) found, ${retired} retired`
   )
-  return { scanned: notes.length, pairsFound, retired, batchesScanned, batchesSkipped }
+  return { scanned: notes.length, pairsFound, retired, batchesScanned, batchesSkipped, batchesFailed }
 }

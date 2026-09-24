@@ -93,3 +93,4 @@ export { isPlausibleUpdateTarget, resolveCrudUpdateMinSim, DEFAULT_CRUD_UPDATE_M
 // env vars still take precedence, and there is no way to inject a key (Story 35).
 export { llmCrudDecision, configureLlm, type MemoryOperation, type LlmConfig } from './llm.js'
 export { hasTimeFor } from './deadline.js'
+export { runInBackground, BackgroundPreempted } from './background.js'

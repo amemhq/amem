@@ -75,6 +75,13 @@ At **02:30 AM** (in-process scheduler), the plugin:
 
 This process prevents memory bloat from semantically redundant facts that accumulate over days.
 
+The job does not run beside your own runs. It starts a step only when no run, compaction or
+`agent_end` write is in flight and nothing has happened for 60 s. If anything happens during a
+step, the step stops at its next LLM call. It runs again from the start when the gateway is
+idle. If the same step stops three times, or the job waits 60 minutes in one night, the job
+stops. The next night goes on with the agents it did not finish. The job cannot see runs in
+another process, such as `openclaw agent --local`.
+
 ## Dedup layers
 
 Every `memory_add` call passes through three dedup layers before reaching Qdrant:
