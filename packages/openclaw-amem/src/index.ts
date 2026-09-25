@@ -165,23 +165,24 @@ function register(api: {
     `openclaw-amem: registered (native TS, Qdrant, default agent_id=${defaultScope.agentId}, default collection=${pluginConfig.collection ?? 'amem_notes (default)'}, per-agent scope resolved per call)`
   )
 
-  // Pre-warm: ensure the default Qdrant collection exists.
+  // Pre-warm: ensure the default Qdrant collection exists. Run from the service's start().
   // An embedding mismatch is not a transient startup hiccup — memory is simply
   // broken until someone acts — so it is logged as an error with the fix, not as
   // one more warning to scroll past. All three qualify: the model one does not
   // stop writes, but it silently mixes two vector geometries, which is worse to
   // discover late than a hard failure.
-  ensureCollection(pluginConfig.collection).catch((e) => {
-    if (
-      e instanceof EmbeddingDimensionMismatchError ||
-      e instanceof EmbeddingModelMismatchError ||
-      e instanceof MixedEmbeddingModelsError
-    ) {
-      logger.error(`openclaw-amem: memory is UNUSABLE — ${e.message}`)
-    } else {
-      logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
-    }
-  })
+  const checkCollection = () =>
+    ensureCollection(pluginConfig.collection).catch((e) => {
+      if (
+        e instanceof EmbeddingDimensionMismatchError ||
+        e instanceof EmbeddingModelMismatchError ||
+        e instanceof MixedEmbeddingModelsError
+      ) {
+        logger.error(`openclaw-amem: memory is UNUSABLE — ${e.message}`)
+      } else {
+        logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
+      }
+    })
 
   // ── registerMemoryCapability ─────────────────────────────────────────────
   if (typeof api.registerMemoryCapability === 'function') {
@@ -683,71 +684,72 @@ function register(api: {
   // ── nightly job (02:30) — one per process, see nightly.ts ─────────────────
   // It stays out of the way of the user's runs (#158). Inside runInBackground an LLM call
   // throws BackgroundPreempted once anything has happened in the gateway since the step
-  // began, and the step runs again from a fresh read when the gateway is idle.
-  scheduleNightly(
-    () =>
-      runNightly({
-        owedFile,
-        defaultAgent: resolveAgentId(),
-        mergeDay: async (rawAgentId, day) => {
-          const scope = buildScope(rawAgentId)
-          const merged = await mergeSimilarNotes(scope.agentId, scope.storageCtx, day)
-          if (merged > 0) logger.info(`openclaw-amem: merged ${merged} similar notes (${scope.agentId}, ${day})`)
-        },
-        after: [
-          {
-            name: 'consolidation',
-            run: async () => {
-              logger.info('openclaw-amem: Running scheduled daily consolidation...')
-              // Background task — no per-session ctx, operate on the default agent scope.
-              const merged = await consolidateMemories(defaultScope.agentId, logger, defaultScope.storageCtx)
-              if (merged > 0) {
-                logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
-              }
-            },
+  // began, and the step runs again from a fresh read when the gateway is idle. Scheduled
+  // from the service's start().
+  const nightlyJob = () =>
+    runNightly({
+      owedFile,
+      defaultAgent: resolveAgentId(),
+      mergeDay: async (rawAgentId, day) => {
+        const scope = buildScope(rawAgentId)
+        const merged = await mergeSimilarNotes(scope.agentId, scope.storageCtx, day)
+        if (merged > 0) logger.info(`openclaw-amem: merged ${merged} similar notes (${scope.agentId}, ${day})`)
+      },
+      after: [
+        {
+          name: 'consolidation',
+          run: async () => {
+            logger.info('openclaw-amem: Running scheduled daily consolidation...')
+            // Background task — no per-session ctx, operate on the default agent scope.
+            const merged = await consolidateMemories(defaultScope.agentId, logger, defaultScope.storageCtx)
+            if (merged > 0) {
+              logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
+            }
           },
-          // Story 43: the cold half of the tiering split. The per-turn CRUD decision
-          // runs on the fast model, which is safe but misses contradictions; this is
-          // what catches them. Runs AFTER consolidation, as its own step, so neither
-          // task can take the other down.
-          //
-          // Only batches that gained a note since the last run are re-read, so a
-          // steady-state night costs a call or two rather than a full re-read.
-          ...(conflictSweepEnabled
-            ? [
-                {
-                  name: 'contradiction sweep',
-                  run: async () => {
-                    const res = await conflictSweep(defaultScope.agentId, {
-                      storageCtx: defaultScope.storageCtx,
-                      logger,
-                    })
-                    if (res.pairsFound > 0) {
-                      logger.info(
-                        `openclaw-amem: Contradiction sweep flagged ${res.pairsFound} pair(s)` +
-                          (res.retired > 0 ? `, retired ${res.retired}` : '') +
-                          ` (${res.batchesScanned} batch(es) read, ${res.batchesSkipped} unchanged).`
-                      )
-                    }
-                  },
+        },
+        // Story 43: the cold half of the tiering split. The per-turn CRUD decision
+        // runs on the fast model, which is safe but misses contradictions; this is
+        // what catches them. Runs AFTER consolidation, as its own step, so neither
+        // task can take the other down.
+        //
+        // Only batches that gained a note since the last run are re-read, so a
+        // steady-state night costs a call or two rather than a full re-read.
+        ...(conflictSweepEnabled
+          ? [
+              {
+                name: 'contradiction sweep',
+                run: async () => {
+                  const res = await conflictSweep(defaultScope.agentId, {
+                    storageCtx: defaultScope.storageCtx,
+                    logger,
+                  })
+                  if (res.pairsFound > 0) {
+                    logger.info(
+                      `openclaw-amem: Contradiction sweep flagged ${res.pairsFound} pair(s)` +
+                        (res.retired > 0 ? `, retired ${res.retired}` : '') +
+                        ` (${res.batchesScanned} batch(es) read, ${res.batchesSkipped} unchanged).`
+                    )
+                  }
                 },
-              ]
-            : []),
-        ],
-        inBackground: (work) => runInBackground(busySinceNow(), work),
-        preempted: (err) => err instanceof BackgroundPreempted,
-        logger,
-      }),
-    (err) => logger.warn(`openclaw-amem: nightly job failed — ${(err as Error).message}`)
-  )
+              },
+            ]
+          : []),
+      ],
+      inBackground: (work) => runInBackground(busySinceNow(), work),
+      preempted: (err) => err instanceof BackgroundPreempted,
+      logger,
+    })
 
   // ── registerService ──────────────────────────────────────────────────────
   if (typeof api.registerService === 'function') {
     api.registerService({
       id: 'amem-plugin',
       start() {
-        // Here and not in register(): OpenClaw also registers plugins in a cli-metadata mode,
-        // where reading api.runtime throws.
+        // Everything with a side effect starts here and not in register(). OpenClaw also runs
+        // register() in CLI commands, in a cli-metadata mode where reading api.runtime
+        // throws, and in the gateway's model-catalog worker threads, which never exit and
+        // each have their own globalThis, so a timer there is a second nightly job that sees
+        // no runs. It starts services only in the gateway and in one-shot diagnostics.
         const events = (api as any).runtime?.events
         if (typeof events?.onAgentEvent === 'function') {
           watchAgentEvents((listener: (evt: AgentEvent) => void) => events.onAgentEvent(listener))
@@ -756,6 +758,10 @@ function register(api: {
             'openclaw-amem: this OpenClaw does not report runs to plugins, so the nightly job cannot wait for them'
           )
         }
+        scheduleNightly(nightlyJob, (err) =>
+          logger.warn(`openclaw-amem: nightly job failed — ${(err as Error).message}`)
+        )
+        void checkCollection()
         logger.info(`openclaw-amem: started (backend: amem-qdrant, default agentId: ${defaultScope.agentId})`)
       },
       stop() {

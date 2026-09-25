@@ -5,6 +5,18 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.4
+
+**The nightly cleanup runs once, and `openclaw` commands no longer load the
+model.** OpenClaw starts some background threads that also load every plugin.
+The cleanup started in each of them, so it could run twice. The copy in such a
+thread could not see your tasks, so it did not wait for them. Each command,
+for example `openclaw --help`, also loaded the 2.27 GB model. During an update
+this sometimes failed with "Cannot find package 'onnxruntime-common'". The
+plugin now starts the cleanup and loads the model only in the gateway.
+
+There is nothing to configure. Update the plugin. Restart the gateway.
+
 ## 2.1.3
 
 **The nightly cleanup runs once, not several times at once.** The plugin can
