@@ -1,5 +1,140 @@
 # Changelog
 
+## 2.1.3
+
+### Patch Changes
+
+- [#162](https://github.com/amemhq/amem/pull/162) [`263b786`](https://github.com/amemhq/amem/commit/263b7865f3587336ddf8587ab3f02772bd4cebc3) Thanks [@heichaowo](https://github.com/heichaowo)! - Stop agent_end at its budget instead of running past it.
+
+  The hook declares a 30 s budget. The host stops waiting at that point but does
+  not cancel the work, so a slow turn kept running and raced the next turn's hook
+  over the same notes. On one store, 172 of 6104 hooks ran past the budget.
+
+  agent_end now takes a deadline 2 s before the budget. Every LLM call inside it
+  gets the time left as its timeout, and no retries. Both SDKs retry twice by
+  default and retry a timeout too, so one slow call could run to about three times
+  the per-call timeout. A call is not started with less than 3 s left. Linking and
+  evolution stop early, so a note is stored with fewer links rather than not at
+  all. An operation that has not started when the time runs out is skipped. What
+  was already stored stays stored.
+
+  Calls without a deadline, for example in the nightly job, keep the client's
+  timeout and retries.
+
+- [#164](https://github.com/amemhq/amem/pull/164) [`2a6a3e9`](https://github.com/amemhq/amem/commit/2a6a3e9a5edd19ed2c08a0dcb5400929485a0bf9) Thanks [@heichaowo](https://github.com/heichaowo)! - Turn thinking off on fast-tier calls to the Anthropic API.
+
+  Fast-tier calls are short extractions and yes/no judgments, and they run inside
+  agent_end's 30 s budget. Some endpoints turn thinking on without being asked. A
+  relay measured on 2026-09-25 did this for claude-haiku-4-5. A short request took
+  about 7 s instead of 5.8 s, and a long Chinese prompt took 13 to 15 s instead of
+  5.5 to 6 s. A fast call on the Anthropic path now sends
+  `thinking: {type: "disabled"}`. On the Anthropic API itself, Haiku 4.5 and
+  Sonnet 4.6 do not think by default, so nothing changes for them there.
+
+  Opus 5.5, Fable and Mythos always think, and they return a 400 for that field.
+  After any 400 to it, the engine asks again without the field. If that works, it
+  remembers the endpoint and model for the rest of the process. Later calls to
+  them go without the field and with at least 4000 output tokens. The engine does
+  not match the error body, because relays word it differently.
+
+  `AMEM_LLM_THINKING` (plugin config `llmThinking`) is `off` by default. `auto`
+  sends no thinking field. The strong tier and the OpenAI path never send one.
+
+- [#161](https://github.com/amemhq/amem/pull/161) [`e9582fb`](https://github.com/amemhq/amem/commit/e9582fbc1a87a9a043375d34fca5620fa14adb51) Thanks [@heichaowo](https://github.com/heichaowo)! - Merge similar notes in the 02:30 job instead of after every turn.
+
+  mergeSimilarNotes ran inside agent_end, once per turn, for that turn's agent. It
+  held the one uncapped term in that hook, an evolution judgment for every
+  pending_merge note written that day, plus up to 10 merge checks. It also read
+  the agent's whole store with vectors on every turn and filtered by date in
+  memory. It now runs in the 02:30 job.
+
+  The nightly job has no session, so it cannot tell which agents wrote. The
+  plugin records each agent that writes, by raw agent id, in
+  `~/.openclaw/amem_nightly_owed.json`, and merges every one of them. The default
+  agent is always included. The record is a file because the gateway restarts
+  often. An agent that wrote before a restart and never after would otherwise be
+  missed. An agent that writes while the run is reading stays on the record for
+  the next night.
+
+  mergeSimilarNotes takes an optional UTC date. Note timestamps are UTC, and
+  02:30 local time falls partway through a UTC day, so a run covers every UTC day
+  from the day of the previous run to today, at most seven.
+
+- [#159](https://github.com/amemhq/amem/pull/159) [`7882687`](https://github.com/amemhq/amem/commit/7882687f4a21b8160c386dfd53e8d97ebf6cd452) Thanks [@heichaowo](https://github.com/heichaowo)! - Run the 02:30 job once per process, and stop it holding the process open.
+
+  register() can run more than once in one process. The gateway has loaded the
+  plugin as two module graphs 50-75 ms apart, and each call started its own timer
+  chain. As a result the nightly job ran two to four times concurrently every
+  night, and each copy re-read the same 15 pairs and raced to merge the same
+  notes. The handle now lives on globalThis, because a module-level variable
+  cannot deduplicate across module graphs. The latest registration owns it.
+
+  The timer is unref'd. Every CLI command that loads plugins calls register() too,
+  and the pending timer kept those processes alive. With the plugin enabled,
+  `openclaw --help` was still running after 91 s. With it disabled, it exited in
+  5 s.
+
+  A job that rejects is now caught and reported. A rejection that escapes a timer
+  callback is unhandled, and Node exits the process on an unhandled rejection.
+
+- [#163](https://github.com/amemhq/amem/pull/163) [`60a553e`](https://github.com/amemhq/amem/commit/60a553ebce3f1196b1e5215f03d715faac15de98) Thanks [@heichaowo](https://github.com/heichaowo)! - Keep the 02:30 job out of the way of the user's own runs.
+
+  The nightly job shares the gateway, the API key and the notes with the user's
+  agent. A task that ran at 02:30 competed with it for the model, and a merge
+  could delete or overwrite a note that the task had just written.
+
+  The plugin now tracks what the gateway does. A run counts from its lifecycle
+  `start` to its `end` or `error` on `api.runtime.events.onAgentEvent`, and its
+  other events keep it fresh. An event after the end does not count the run
+  again, because a memory flush and a model fallback both send one. A run that is
+  silent for 30 minutes stops counting. The plugin's own agent_end counts while it
+  writes, and so does a compaction, from `before_compaction` to
+  `after_compaction`. A channel message (`message_received`) counts as activity,
+  because a channel turn bound to an ACP session sends nothing else. An edited
+  message does not count: Telegram sends a live-location update as an edit about
+  every 40 s, and it starts no turn. The subscription starts in the service's
+  `start()`, because reading `api.runtime` throws when OpenClaw registers plugins
+  in its cli-metadata mode.
+
+  The job starts a step only when nothing is in flight and nothing has happened
+  for 60 s. A step is one agent's merge for one UTC day, the consolidation, or the
+  contradiction sweep. Inside the engine's `runInBackground`, `llmCall` throws
+  `BackgroundPreempted` before and after each call once anything has happened
+  since the step began. The consolidation's similarity loop yields to the event
+  loop after each row and stops the same way. The step then runs again from a
+  fresh read when the gateway is idle. It does not wait in place, because the
+  notes it read can be stale after the wait. A step that stops three times, or 60
+  minutes of waiting in one night, ends the night.
+
+  Progress is kept per agent. The owed file records, for each agent, its earliest
+  write not yet merged and its latest write. The earliest is taken before the
+  writes begin, because a note is dated when its write starts, and a write that
+  crosses UTC midnight must keep the earlier day. An agent is settled as soon as
+  all of its days are merged, so the next night goes on with the agents that a
+  stopped night did not reach. An agent with a day that failed stays owed, and
+  the next night reads that day again, until it is outside the 7-day window.
+
+  The contradiction sweep no longer marks a batch as scanned when the model gave
+  no usable answer. `llmConflictScan` returns null in that case, and also when
+  every entry in the answer fails the checks. The next run reads the batch again.
+  Before, one failed call meant that the sweep never read that batch again.
+
+- [#169](https://github.com/amemhq/amem/pull/169) [`5271cb2`](https://github.com/amemhq/amem/commit/5271cb2fb4f666412b53a9bcd867f901503a2aa9) Thanks [@heichaowo](https://github.com/heichaowo)! - Give a call that may think enough output tokens to answer.
+
+  Thinking counts against max_tokens. The strong tier asks for 300 to 600 tokens
+  and sends no thinking field. On Sonnet 5, Opus 5, Opus 5.5 or Fable, thinking
+  could use all of them and leave no answer. A missing evolution judgment reads as
+  NEW, which clears pending_merge, so the pair is not judged again.
+
+  On the Anthropic path, every call that does not send thinking disabled now gets
+  at least 4000 output tokens. That is every strong-tier call, a fast call with
+  `AMEM_LLM_THINKING=auto`, and a model that refused disabled. On the OpenAI path,
+  OpenAI's own reasoning models (o-series, gpt-5) get the same. Before, their
+  budget stayed as asked. max_tokens is a cap, so a model that does not think
+  still stops where its answer ends. An answer that the old cap cut off can now be
+  complete. A server that checks prompt plus max_tokens against a small context
+  window, such as vLLM on the Anthropic format, can reject the larger requests.
+
 ## 2.1.2
 
 ### Patch Changes
