@@ -28,6 +28,7 @@
           "AMEM_LLM_STRONG_MODEL",
           "AMEM_LLM_STRONG_BASE_URL",
           "AMEM_LLM_CRUD_ROLE",
+          "AMEM_LLM_THINKING",
           "AMEM_CONFLICT_MODE",
           "AMEM_LLM_TIMEOUT",
           "AMEM_CRUD_UPDATE_MIN_SIM",
