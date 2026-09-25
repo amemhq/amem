@@ -131,7 +131,8 @@ describe('llmCall provider dispatch', () => {
     await llmCall('ping', 200)
 
     const arg = openaiCreate.mock.calls[0][0]
-    expect(arg.max_completion_tokens).toBe(200)
+    // Raised as well: reasoning counts against it (see llm-thinking.test.ts).
+    expect(arg.max_completion_tokens).toBe(4000)
     expect(arg.max_tokens).toBeUndefined()
   })
 
@@ -259,7 +260,11 @@ describe('configureLlm — host-injected LLM settings', () => {
     // field here would make the memory engine a channel for a user's gateway
     // credentials. TypeScript rejects the field; this pins the runtime too.
     openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
-    const { llmCall, configureLlm } = await loadLlm({ ...noEnv, AMEM_LLM_API_KEY: undefined, OPENAI_API_KEY: undefined })
+    const { llmCall, configureLlm } = await loadLlm({
+      ...noEnv,
+      AMEM_LLM_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
+    })
 
     configureLlm({ provider: 'openai', apiKey: 'sk-smuggled-from-host-config' } as LlmConfig)
     await llmCall('ping')
