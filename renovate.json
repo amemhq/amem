@@ -22,6 +22,11 @@
       "groupName": "dev dependencies"
     },
     {
+      "description": "@node-rs/jieba and the two platform binaries that both packages also declare as optional dependencies. One jieba release used to open three PRs, and a binary left behind stayed in the lockfile beside the one jieba pulls in.",
+      "matchPackageNames": ["@node-rs/jieba", "@node-rs/jieba-*"],
+      "groupName": "jieba"
+    },
+    {
       "description": "Workflow actions in one PR.",
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
