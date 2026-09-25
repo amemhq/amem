@@ -49,6 +49,8 @@ export interface AmemPluginConfig {
   llmStrongBaseURL?: string
   /** Which tier the agent_end CRUD decision runs on: `fast` (default) or `strong`. */
   llmCrudRole?: 'fast' | 'strong'
+  /** Whether `fast`-tier calls turn thinking off: `off` (default) or `auto`. */
+  llmThinking?: 'off' | 'auto'
   /** Story 43: run the nightly contradiction sweep. Default true. */
   conflictSweep?: boolean
   // ── Story 41: CRUD write safety ─────────────────────────────────────────────

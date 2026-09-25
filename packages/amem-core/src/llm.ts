@@ -67,6 +67,12 @@ export interface LlmConfig extends LlmRoleConfig {
    * spending an existing user's money on a pricier model without them asking.
    */
   strong?: LlmRoleConfig
+  /**
+   * Whether `fast`-tier calls turn thinking off: `off` (default) or `auto`, which sends
+   * no thinking field and leaves it to the model and endpoint. Anthropic path only; see
+   * the note at `_thinkingStaysOn`.
+   */
+  thinking?: 'off' | 'auto'
   /** Which role the agent_end CRUD decision uses. Default `fast`. */
   crudRole?: LlmRole
 }
@@ -147,6 +153,33 @@ function resolveCrudRole(): LlmRole {
   return 'fast'
 }
 
+/**
+ * Whether a fast-tier call on the Anthropic path turns thinking off. Defaults to `off`,
+ * see the note below. An unrecognised value falls back to `off` and warns once.
+ */
+function resolveThinking(): 'off' | 'auto' {
+  const raw = (process.env.AMEM_LLM_THINKING || _override.thinking || 'off').trim().toLowerCase()
+  if (raw === 'auto') return 'auto'
+  if (raw !== 'off') warnOnce(`thinking:${raw}`, `[amem] unknown AMEM_LLM_THINKING "${raw}"; using off`)
+  return 'off'
+}
+
+// ── Thinking on the fast tier (#158) ──────────────────────────────────────────
+// Fast-tier calls are short extractions and yes/no judgments. Thinking buys them nothing and
+// costs each of them time inside agent_end's budget. Some endpoints turn it on unasked: a
+// relay measured on 2026-09-25 did so for claude-haiku-4-5, and a short call took ~7 s
+// instead of ~5.8 s, a merge prompt 13-15 s instead of 5.5-6 s. So a fast call on the
+// Anthropic path sends thinking {type: "disabled"}.
+//
+// Opus 5.5, Fable and Mythos always think and answer that with a 400. After any 400 to it,
+// the call is made again without the field, which is the request amem sent before. The
+// (endpoint, model) pair is remembered only if that works, so a 400 for another reason
+// does not switch the setting off. The body is not matched, because relays word the
+// rejection differently and some do not mention thinking. A remembered pair gets room for
+// the thinking it will do, or its answer may never start.
+const _thinkingStaysOn = new Set<string>()
+const roomToThink = (maxTokens: number) => Math.max(maxTokens * 8, 4000)
+
 const DEFAULT_TIMEOUT_MS = 30_000
 function resolveTimeoutMs(): number {
   const envVal = Number(process.env.AMEM_LLM_TIMEOUT)
@@ -215,22 +248,36 @@ export async function llmCall(
   // With a deadline, the call gets the time left and no retries. Both SDKs retry twice by
   // default and retry a timeout too, so one slow call could run to three times the
   // timeout, long after the host stopped waiting. Background callers keep the retries.
-  const request =
+  // A function, because a second attempt needs the time left at that point.
+  const request = () =>
     opts.deadline === undefined
       ? undefined
       : { timeout: Math.min(resolveTimeoutMs(), opts.deadline - Date.now()), maxRetries: 0 }
   const provider = resolveProvider(role)
   const model = resolveModel(role)
   const baseURL = resolveBaseURL(role)
+  const pair = `${baseURL ?? ''}|${model}`
+  const thinkingOff =
+    provider !== 'openai' && role === 'fast' && resolveThinking() === 'off' && !_thinkingStaysOn.has(pair)
   // Gemini thinking models consume extra tokens for reasoning; scale up automatically
   const isThinking = model.includes('gemini') || model.includes('pro-agent')
-  const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
+  const effectiveMaxTokens = isThinking || _thinkingStaysOn.has(pair) ? roomToThink(maxTokens) : maxTokens
   let text: string | null = null
   try {
-    text =
-      provider === 'openai'
-        ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL, request)
-        : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request)
+    if (provider === 'openai') {
+      text = await openaiCall(prompt, model, effectiveMaxTokens, baseURL, request())
+    } else if (!thinkingOff) {
+      text = await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request())
+    } else {
+      try {
+        text = await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request(), { type: 'disabled' })
+      } catch (e) {
+        if ((e as { status?: number }).status !== 400 || !hasTimeFor(opts.deadline)) throw e
+        text = await anthropicCall(prompt, model, roomToThink(maxTokens), baseURL, request())
+        _thinkingStaysOn.add(pair)
+        warnOnce(`thinking-on:${pair}`, `[amem] ${model} refused thinking disabled; its fast calls keep thinking`)
+      }
+    }
     // A 200 that carries no text. Every caller treats this exactly like a thrown
     // error, so it is reported here rather than at each of them — otherwise the
     // one failure mode that does not throw is the one nobody hears about.
@@ -251,13 +298,15 @@ async function anthropicCall(
   model: string,
   maxTokens: number,
   baseURL: string | undefined,
-  request?: RequestLimits
+  request?: RequestLimits,
+  thinking?: { type: 'disabled' }
 ): Promise<string | null> {
   const resp = await anthropic(baseURL).messages.create(
     {
       model,
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
+      ...(thinking && { thinking }),
     },
     request
   )

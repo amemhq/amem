@@ -28,6 +28,7 @@
           "AMEM_LLM_STRONG_MODEL",
           "AMEM_LLM_STRONG_BASE_URL",
           "AMEM_LLM_CRUD_ROLE",
+          "AMEM_LLM_THINKING",
           "AMEM_CONFLICT_MODE",
           "AMEM_LLM_TIMEOUT",
           "AMEM_CRUD_UPDATE_MIN_SIM",
@@ -137,6 +138,15 @@
         ],
         "default": "fast",
         "description": "Which tier the agent_end CRUD decision runs on. Defaults to fast: it runs every turn, and its destructive failure mode is handled by the update guard rather than by model tier. Overridden by AMEM_LLM_CRUD_ROLE."
+      },
+      "llmThinking": {
+        "type": "string",
+        "enum": [
+          "off",
+          "auto"
+        ],
+        "default": "off",
+        "description": "Whether fast-tier calls on the Anthropic API turn thinking off. off sends thinking disabled; a model that refuses it, such as Opus 5.5 or Fable, keeps thinking. auto sends no thinking field. Overridden by AMEM_LLM_THINKING."
       },
       "conflictSweep": {
         "type": "boolean",

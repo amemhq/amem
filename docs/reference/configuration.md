@@ -32,6 +32,7 @@
 | `llmStrongModel` | `string` | falls back to `llmModel` | Optional strong tier: model for the hard judgements. Unset = single-model behaviour. |
 | `llmStrongBaseURL` | `string` | falls back to `llmBaseURL` | Optional strong tier: endpoint. |
 | `llmCrudRole` | `"fast" \| "strong"` | `"fast"` | Which tier the `agent_end` CRUD decision runs on. |
+| `llmThinking` | `"off" \| "auto"` | `"off"` | Whether fast-tier calls on the Anthropic API turn thinking off. See `AMEM_LLM_THINKING`. |
 | `conflictSweep` | `boolean` | `true` | Run the nightly contradiction sweep. See [Contradiction sweep](#contradiction-sweep). |
 | `crudUpdateMinSim` | `number` | `0.35` | Similarity floor for accepting an LLM-chosen `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, OpenClaw silently blocks automatic memory write-back. |
@@ -292,6 +293,7 @@ These environment variables override plugin defaults at runtime. They are useful
 | `AMEM_LLM_STRONG_BASE_URL` | falls back to `AMEM_LLM_BASE_URL` | Optional strong tier: endpoint. Set all three to run the tiers on different backends. |
 | `AMEM_CONFLICT_MODE` | `review` | What the contradiction sweep does with a pair it finds: `review` (mark only) or `auto` (also retires the older one). See [Contradiction sweep](#contradiction-sweep). |
 | `AMEM_LLM_CRUD_ROLE` | `fast` | Which tier the `agent_end` CRUD decision uses (`fast` or `strong`). |
+| `AMEM_LLM_THINKING` | `off` | Whether fast-tier calls on the Anthropic API turn thinking off. `off` sends `thinking: {type: "disabled"}`. A model that refuses it, such as Opus 5.5 or Fable, keeps thinking, and the engine gives it more output tokens. `auto` sends no thinking field. The strong tier and the OpenAI path never send one. |
 | `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`. If neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. It guards against a slow or stuck endpoint, for example a loaded vLLM or an unreachable gateway. Outside `agent_end`, the client retries a request that times out two more times, so one call can take about three times this value. Inside `agent_end`, a call gets the smaller of this value and the time left in the hook's 30-second budget, and it is not retried. |

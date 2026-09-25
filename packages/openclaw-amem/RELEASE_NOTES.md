@@ -40,6 +40,14 @@ night starts where it stopped.
 The cleanup cannot see a task that runs in a separate process, for example
 `openclaw agent --local`.
 
+**Saving memories after a turn is faster on some API endpoints.** Some
+endpoints make the model think before it answers, even when nobody asked for
+it. The memory step after each turn does not need that. On one endpoint a short
+request took about 7 s instead of 5.8 s, and a long one took 13 to 15 s instead
+of about 6 s. The plugin now asks the model not to think. A model that must
+think, such as Opus 5.5, still works as before. To go back to the old requests,
+set `llmThinking` to `auto`.
+
 **A contradiction check that fails is done again.** When the model gave no
 usable answer for a group of memories, the check still marked the group as
 done. It never checked that group again. Now it checks the group again the next

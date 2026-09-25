@@ -104,6 +104,7 @@ function register(api: {
     pluginConfig.llmModel ||
     pluginConfig.llmBaseURL ||
     pluginConfig.llmCrudRole ||
+    pluginConfig.llmThinking ||
     hasStrong
   ) {
     configureLlm({
@@ -111,6 +112,7 @@ function register(api: {
       model: pluginConfig.llmModel,
       baseURL: pluginConfig.llmBaseURL,
       crudRole: pluginConfig.llmCrudRole,
+      thinking: pluginConfig.llmThinking,
       // Omit the whole block when unset so `strong` transparently falls back to
       // `fast` — the zero-config path stays byte-for-byte today's behaviour.
       ...(hasStrong && {
