@@ -48,6 +48,12 @@ of about 6 s. The plugin now asks the model not to think. A model that must
 think, such as Opus 5.5, still works as before. To go back to the old requests,
 set `llmThinking` to `auto`.
 
+**A model that thinks has room to answer.** If you set a stronger model for
+the nightly checks, for example Opus 5.5, its thinking could use up all the
+space for its answer. The check then got no answer, and it treated two similar
+memories as different. The plugin now leaves room for the answer. A model that
+does not think still stops when its answer is done.
+
 **A contradiction check that fails is done again.** When the model gave no
 usable answer for a group of memories, the check still marked the group as
 done. It never checked that group again. Now it checks the group again the next

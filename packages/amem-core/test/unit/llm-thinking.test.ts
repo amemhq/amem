@@ -146,3 +146,48 @@ describe('a model that refuses thinking disabled', () => {
     expect(anthropicCreate).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('room for a model that may think', () => {
+  // With too few output tokens, thinking can use them all and leave no answer, and a
+  // missing evolution judgment reads as NEW, which clears pending_merge.
+
+  it('is given on the strong tier, which does not turn thinking off', async () => {
+    anthropicCreate.mockResolvedValue(reply('{"type": "NEW"}'))
+    const { llmEvolutionJudge } = await load({ AMEM_LLM_STRONG_MODEL: 'claude-opus-5-5' })
+
+    await llmEvolutionJudge('old', 'new')
+
+    expect(bodies()[0].max_tokens).toBeGreaterThanOrEqual(4000)
+    expect(bodies()[0]).not.toHaveProperty('thinking')
+  })
+
+  it('is given to a fast call when thinking is left on', async () => {
+    anthropicCreate.mockResolvedValue(reply('yes'))
+    const { llmCall } = await load({ AMEM_LLM_THINKING: 'auto' })
+
+    await llmCall('related?', 16, 'fast')
+
+    expect(bodies()[0].max_tokens).toBe(4000)
+  })
+
+  it('is not needed once thinking is off', async () => {
+    anthropicCreate.mockResolvedValue(reply('yes'))
+    const { llmCall } = await load()
+
+    await llmCall('related?', 16, 'fast')
+
+    expect(bodies()[0].max_tokens).toBe(16)
+  })
+
+  it("is given to OpenAI's reasoning models, and not to the others", async () => {
+    openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'yes' } }] })
+    const reasoning = await load({ AMEM_LLM_PROVIDER: 'openai', AMEM_LLM_MODEL: 'gpt-5' })
+    await reasoning.llmCall('related?', 16, 'fast')
+    const plain = await load({ AMEM_LLM_PROVIDER: 'openai', AMEM_LLM_MODEL: 'gpt-4o-mini' })
+    await plain.llmCall('related?', 16, 'fast')
+
+    const [first, second] = openaiCreate.mock.calls.map((c) => c[0])
+    expect(first.max_completion_tokens).toBe(4000)
+    expect(second.max_tokens).toBe(16)
+  })
+})

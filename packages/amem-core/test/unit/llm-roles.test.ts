@@ -61,8 +61,8 @@ afterEach(() => vi.unstubAllEnvs())
 
 describe('call → role routing', () => {
   it('runs extraction and linking on fast, merge and evolution-judge on strong', async () => {
-    anthropicCreate.mockImplementation(async (a: { max_tokens: number }) =>
-      asAnthropic(a.max_tokens === 10 ? 'no' : a.max_tokens === 300 ? MERGE_JSON : NOTE_JSON)
+    anthropicCreate.mockImplementation(async (a: { model: string; max_tokens: number }) =>
+      asAnthropic(a.model === 'strong-1' ? MERGE_JSON : a.max_tokens === 10 ? 'no' : NOTE_JSON)
     )
     const llm = await loadLlm({ AMEM_LLM_MODEL: 'cheap-1', AMEM_LLM_STRONG_MODEL: 'strong-1' })
 

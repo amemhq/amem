@@ -259,9 +259,16 @@ export async function llmCall(
   const pair = `${baseURL ?? ''}|${model}`
   const thinkingOff =
     provider !== 'openai' && role === 'fast' && resolveThinking() === 'off' && !_thinkingStaysOn.has(pair)
-  // Gemini thinking models consume extra tokens for reasoning; scale up automatically
-  const isThinking = model.includes('gemini') || model.includes('pro-agent')
-  const effectiveMaxTokens = isThinking || _thinkingStaysOn.has(pair) ? roomToThink(maxTokens) : maxTokens
+  // A call that may think needs room for it, or its answer may never start, and callers
+  // read no answer as a verdict: a missing evolution judgment is NEW, which clears
+  // pending_merge. Gemini thinking models, by name. On the Anthropic path, every call that
+  // does not turn thinking off, because Sonnet 5, Opus 5 and later think unless told not
+  // to. On the OpenAI path, OpenAI's own reasoning models.
+  const mayThink =
+    model.includes('gemini') ||
+    model.includes('pro-agent') ||
+    (provider === 'openai' ? isOpenAIReasoning(model) : !thinkingOff)
+  const effectiveMaxTokens = mayThink ? roomToThink(maxTokens) : maxTokens
   let text: string | null = null
   try {
     if (provider === 'openai') {
@@ -316,6 +323,15 @@ async function anthropicCall(
   return null
 }
 
+/**
+ * OpenAI's own reasoning models (o1/o3, gpt-5). Matched narrowly: a broad
+ * `includes('reason')` would wrongly catch other gateways' models (e.g. DeepSeek's
+ * `deepseek-reasoner`, which uses max_tokens).
+ */
+function isOpenAIReasoning(model: string): boolean {
+  return /^o\d/.test(model) || model.startsWith('gpt-5')
+}
+
 async function openaiCall(
   prompt: string,
   model: string,
@@ -323,16 +339,12 @@ async function openaiCall(
   baseURL: string | undefined,
   request?: RequestLimits
 ): Promise<string | null> {
-  // OpenAI's own reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
-  // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
-  // our single-shot completions — only the parameter name differs. Match OpenAI
-  // names narrowly: a broad `includes('reason')` would wrongly catch other
-  // gateways' models (e.g. DeepSeek's `deepseek-reasoner`, which uses max_tokens).
-  const isReasoning = /^o\d/.test(model) || model.startsWith('gpt-5')
+  // OpenAI's reasoning models reject `max_tokens` and require `max_completion_tokens`;
+  // everything else takes `max_tokens`.
   const resp = await openai(baseURL).chat.completions.create(
     {
       model,
-      ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+      ...(isOpenAIReasoning(model) ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
       messages: [{ role: 'user', content: prompt }],
     },
     request
