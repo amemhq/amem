@@ -1,17 +1,20 @@
 /**
  * The 02:30 job: one timer per process, and a timer that never holds the process open.
  *
- * register() can run more than once in a process. The gateway has been seen loading this
- * plugin as two module graphs 50-75 ms apart, and each call used to start its own timer
+ * The service's start() schedules it, not register(). OpenClaw also runs register() in
+ * CLI commands and in the gateway's model-catalog worker threads, which never exit and
+ * each have their own globalThis, so a timer scheduled there was a second nightly job.
+ *
+ * Within one thread the plugin can still start more than once. The gateway has been seen
+ * loading it as two module graphs 50-75 ms apart, and each used to start its own timer
  * chain, which ran the nightly job 2-4 times concurrently every night, each copy
  * re-reading the same pairs and racing to merge the same notes. A module-level variable
  * cannot deduplicate across module graphs, so the handle lives on globalThis and the
- * latest registration owns it.
+ * latest start owns it.
  *
- * The timer is unref'd. Every CLI command that loads plugins calls register() too, and a
- * pending 02:30 timer kept those processes from exiting: with the plugin enabled
- * `openclaw --help` was still running after 91 s, and with it disabled it exited in 5 s.
- * The gateway is held open by its own server, so this changes nothing there.
+ * The timer is unref'd. One-shot diagnostics start services too, and a pending 02:30
+ * timer kept such processes from exiting: `openclaw --help` was once still running after
+ * 91 s. The gateway is held open by its own server, so this changes nothing there.
  *
  * Split out of index.ts with no engine imports so it can be unit-tested, like scope.ts.
  */
