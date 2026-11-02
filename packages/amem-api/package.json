@@ -30,7 +30,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@amemhq/core": "workspace:^",
     "fastify": "^5.10.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
