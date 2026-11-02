@@ -157,4 +157,12 @@ AMEM_LLM_PROVIDER=openai AMEM_LLM_BASE_URL=http://localhost:11434/v1 \
 AMEM_LLM_MODEL=qwen2.5
 ```
 
+If three calls in a row to the same endpoint and model fail authentication or are denied, the plugin logs an error at level ERROR:
+
+```
+[amem] 3 LLM calls in a row to http://127.0.0.1:3456 (model claude-haiku-4-5) failed authentication or were denied. Until the key or the endpoint is fixed, turns are not captured and new notes get no keywords or tags. Last error: ...
+```
+
+A missing API key produces the same error. For a strong-tier model, the error says that the nightly merge and contradiction checks do nothing instead. The error repeats at most once an hour while the problem lasts. When a call works again, the plugin logs a warning. The error names only the scheme and host of the endpoint, never its path, query or credentials.
+
 For the full environment variable reference and model recommendations, see **[Configuration →](/reference/configuration)**.

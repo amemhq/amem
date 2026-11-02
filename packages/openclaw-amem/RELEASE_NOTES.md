@@ -5,6 +5,18 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.5
+
+**You hear about it when the model refuses your key.** If the API endpoint
+rejects the plugin's requests, for example because a login expired or the key
+is missing, the plugin saves nothing from your turns. Before, each rejected
+request wrote one warning to the log, and on one machine this went on for six
+days before anyone noticed. Now, after three rejections in a row, the plugin
+logs an error that names the endpoint and the model and gives the last error.
+It repeats at most once an hour until a request works again.
+
+There is nothing to configure. Update the plugin. Restart the gateway.
+
 ## 2.1.4
 
 **The nightly cleanup runs once, and `openclaw` commands no longer load the
