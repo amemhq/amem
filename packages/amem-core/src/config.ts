@@ -12,6 +12,10 @@
  * warning the engine wrote went nowhere. An LLM outage that stored notes with
  * empty keywords for eleven days looked exactly like eleven quiet days. A host
  * passes its own logger to claim these.
+ *
+ * `error` is for a failure that stops the engine doing its job until someone acts, such as
+ * an endpoint that refuses every call. A host routes it to its error level, so that it does
+ * not scroll by with the warnings.
  */
 import * as os from 'os'
 import * as path from 'path'
@@ -19,10 +23,16 @@ import * as path from 'path'
 let _dataDir = process.env.AMEM_DATA_DIR || path.join(os.homedir(), '.amem')
 
 let _warn: (msg: string) => void = (msg) => console.warn(msg)
+let _error: (msg: string) => void = (msg) => console.error(msg)
 
-export function configure(opts: { dataDir?: string; warn?: (msg: string) => void }): void {
+export function configure(opts: {
+  dataDir?: string
+  warn?: (msg: string) => void
+  error?: (msg: string) => void
+}): void {
   if (opts.dataDir) _dataDir = opts.dataDir
   if (opts.warn) _warn = opts.warn
+  if (opts.error) _error = opts.error
 }
 
 export function getDataDir(): string {
@@ -36,4 +46,9 @@ export function getDataDir(): string {
  */
 export function warn(msg: string): void {
   _warn(msg)
+}
+
+/** Report a failure that stops the engine doing its job until someone acts. */
+export function error(msg: string): void {
+  _error(msg)
 }

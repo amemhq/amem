@@ -5,7 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { t } from './prompts.js'
-import { warn } from './config.js'
+import { warn, error } from './config.js'
 import { hasTimeFor, MIN_CALL_MS, type CallOptions } from './deadline.js'
 import { stopIfForegroundBusy } from './background.js'
 
@@ -180,6 +180,79 @@ function resolveThinking(): 'off' | 'auto' {
 const _thinkingStaysOn = new Set<string>()
 const roomToThink = (maxTokens: number) => Math.max(maxTokens * 8, 4000)
 
+// ── Credentials that stopped working ──────────────────────────────────────────
+// A failed call is a warning, and warnings scroll by. Calls that fail authentication every
+// time stop the engine until someone fixes the key or the endpoint, and on 2026-10-28 that
+// went unnoticed for six days: a local proxy's Claude login had expired, and no note was
+// stored. So after AUTH_ALERT_AFTER such failures in a row the engine reports an error,
+// again at most once an hour while it lasts, and a warning once a call works again.
+//
+// Such a failure is a 401 or 403, or an error that mentions authentication: one relay
+// wrapped its backend's 403 in a 500 that said "Failed to authenticate", and the SDK's own
+// error for a missing key says it too. Other failures neither count nor end a run. Runs are
+// counted per endpoint and model, because a relay can deny one model and serve another.
+const AUTH_ALERT_AFTER = 3
+const AUTH_ALERT_EVERY_MS = 60 * 60_000
+const _authFailures = new Map<string, { count: number; alertedAt?: number }>()
+
+function isAuthFailure(e: unknown): boolean {
+  const status = (e as { status?: number }).status
+  return status === 401 || status === 403 || /authenticat/i.test((e as Error)?.message ?? '')
+}
+
+/**
+ * Scheme and host only, never a path, a query or credentials from the URL. With no base URL
+ * configured here, the SDK picks one from its own variable, which this does not read: an
+ * undeclared environment read is a finding in ClawHub's scan.
+ */
+function endpointName(provider: string, baseURL: string | undefined): string {
+  if (!baseURL) {
+    return provider === 'openai'
+      ? 'the endpoint the OpenAI SDK picks (OPENAI_BASE_URL, or api.openai.com)'
+      : 'the endpoint the Anthropic SDK picks (ANTHROPIC_BASE_URL, or api.anthropic.com)'
+  }
+  const m = baseURL.match(/^([a-z][a-z0-9+.-]*:\/\/)(?:[^@/?#]*@)?([^/?#]+)/i)
+  return m ? m[1] + m[2] : `the ${provider} endpoint`
+}
+
+function noteAuthFailure(
+  provider: string,
+  baseURL: string | undefined,
+  model: string,
+  role: LlmRole,
+  e: unknown
+): void {
+  const key = `${provider}|${baseURL ?? ''}|${model}`
+  const run = _authFailures.get(key) ?? { count: 0 }
+  run.count++
+  _authFailures.set(key, run)
+  const now = Date.now()
+  if (run.count < AUTH_ALERT_AFTER) return
+  if (run.alertedAt !== undefined && now - run.alertedAt < AUTH_ALERT_EVERY_MS) return
+  run.alertedAt = now
+  const stopped =
+    role === 'fast'
+      ? 'turns are not captured and new notes get no keywords or tags'
+      : 'the nightly merge and contradiction checks do nothing'
+  error(
+    `[amem] ${run.count} LLM calls in a row to ${endpointName(provider, baseURL)} (model ${model}) failed ` +
+      `authentication or were denied. Until the key or the endpoint is fixed, ${stopped}. ` +
+      `Last error: ${String((e as Error)?.message).slice(0, 200)}`
+  )
+}
+
+function noteCallWorked(provider: string, baseURL: string | undefined, model: string): void {
+  const key = `${provider}|${baseURL ?? ''}|${model}`
+  const run = _authFailures.get(key)
+  if (!run) return
+  _authFailures.delete(key)
+  if (run.alertedAt !== undefined) {
+    warn(
+      `[amem] LLM calls to ${endpointName(provider, baseURL)} (model ${model}) work again, after ${run.count} failed authentication`
+    )
+  }
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000
 function resolveTimeoutMs(): number {
   const envVal = Number(process.env.AMEM_LLM_TIMEOUT)
@@ -285,11 +358,13 @@ export async function llmCall(
         warnOnce(`thinking-on:${pair}`, `[amem] ${model} refused thinking disabled; its fast calls keep thinking`)
       }
     }
+    noteCallWorked(provider, baseURL, model)
     // A 200 that carries no text. Every caller treats this exactly like a thrown
     // error, so it is reported here rather than at each of them — otherwise the
     // one failure mode that does not throw is the one nobody hears about.
     if (text === null) warn(`[amem] ${provider} answered with no text (model ${model})`)
   } catch (e) {
+    if (isAuthFailure(e)) noteAuthFailure(provider, baseURL, model, role, e)
     warn(`[amem] LLM call failed: ${(e as Error).message}`)
   }
   // Again after the call: a run that came and went while it was out may have written notes

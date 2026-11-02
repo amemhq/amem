@@ -92,6 +92,7 @@ function register(api: {
   configure({
     dataDir: path.join(os.homedir(), '.openclaw'),
     warn: (msg: string) => logger.warn(msg),
+    error: (msg: string) => logger.error(msg),
   })
 
   // Story 35: let openclaw.json pick the model without setting env vars. Env
