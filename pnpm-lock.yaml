@@ -92,7 +92,7 @@ importers:
         version: 6.49.0(zod@4.4.3)
       uuid:
         specifier: ^14.0.0
-        version: 14.0.1
+        version: 14.0.3
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -142,7 +142,7 @@ importers:
         version: 6.49.0(zod@4.4.3)
       uuid:
         specifier: ^14.0.0
-        version: 14.0.1
+        version: 14.0.3
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -3278,8 +3278,8 @@ packages:
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
 
-  uuid@14.0.1:
-    resolution: {integrity: sha512-6ZxzVpzDXDa3bJWaHilVayA+BH/1zmxCJoVgvmqJnid/gPoKHxUrS/aC/T6LGQtNHT+XHG9fXPJB4d+IrU30Ew==}
+  uuid@14.0.3:
+    resolution: {integrity: sha512-Sc5u1VVln93y1Xnz4R+CunOZc7R9LUcTmhj7Rc7Eg3HVcf7rVn2FOoa812fe0W8p3jD7xeoGSYbfqCGGH2B6xw==}
     hasBin: true
 
   vary@1.1.2:
@@ -6535,7 +6535,7 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  uuid@14.0.1: {}
+  uuid@14.0.3: {}
 
   vary@1.1.2: {}
 
