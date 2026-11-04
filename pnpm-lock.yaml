@@ -86,7 +86,7 @@ importers:
         version: 2.0.4
       '@qdrant/js-client-rest':
         specifier: ^1.18.0
-        version: 1.18.0(typescript@6.0.3)
+        version: 1.20.0(typescript@6.0.3)
       openai:
         specifier: ^6.48.0
         version: 6.49.0(zod@4.6.6)
@@ -136,7 +136,7 @@ importers:
         version: 2.0.4
       '@qdrant/js-client-rest':
         specifier: ^1.18.0
-        version: 1.18.0(typescript@6.0.3)
+        version: 1.20.0(typescript@6.0.3)
       openai:
         specifier: ^6.48.0
         version: 6.49.0(zod@4.6.6)
@@ -1052,9 +1052,9 @@ packages:
   '@protobufjs/utf8@1.1.2':
     resolution: {integrity: sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==}
 
-  '@qdrant/js-client-rest@1.18.0':
-    resolution: {integrity: sha512-/0dqX5uV9chC1DnYSnU4gNMrDqse/pt6hHg3Rqqpl5isH7xl1xSNvffjzBoxycDD79luWn7Ho6Rh/61sOs5DNw==}
-    engines: {node: '>=18.17.0', pnpm: '>=8'}
+  '@qdrant/js-client-rest@1.20.0':
+    resolution: {integrity: sha512-NhvW4z3rbxYc1e+ksHci5hE8vNBpbi5YoB7z3dzaVcskM2el7O/exNg5fclAN+G5MXn/TRx2Rcie8YTXo2YQdg==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
       typescript: '>=4.7'
 
@@ -3241,9 +3241,9 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@6.29.1:
-    resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
-    engines: {node: '>=18.17'}
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
+    engines: {node: '>=20.18.1'}
 
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
@@ -4185,11 +4185,11 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2': {}
 
-  '@qdrant/js-client-rest@1.18.0(typescript@6.0.3)':
+  '@qdrant/js-client-rest@1.20.0(typescript@6.0.3)':
     dependencies:
       '@qdrant/openapi-typescript-fetch': 1.2.6
       typescript: 6.0.3
-      undici: 6.29.1
+      undici: 7.29.1
 
   '@qdrant/openapi-typescript-fetch@1.2.6': {}
 
@@ -6483,7 +6483,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  undici@6.29.1: {}
+  undici@7.29.1: {}
 
   unified@11.0.5:
     dependencies:
