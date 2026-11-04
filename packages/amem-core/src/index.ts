@@ -16,7 +16,7 @@
 export { configure } from './config.js'
 
 // ── Embedding & model lifecycle ───────────────────────────────────────────────
-export { encode, loadModel, isModelLoaded } from './embedding.js'
+export { encode, loadModel, isModelLoaded, closeEmbedding, openEmbedding } from './embedding.js'
 
 // ── Memory operations ─────────────────────────────────────────────────────────
 export {

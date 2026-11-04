@@ -5,11 +5,17 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 // threads, which never exit and each have their own globalThis. A timer or a model load in
 // register() ran there too: on 2.1.3 the 02:30 job ran twice in one gateway.
 
-const { ensureCollection } = vi.hoisted(() => ({ ensureCollection: vi.fn(async () => {}) }))
+const { ensureCollection, openEmbedding, closeEmbedding } = vi.hoisted(() => ({
+  ensureCollection: vi.fn(async () => {}),
+  openEmbedding: vi.fn(),
+  closeEmbedding: vi.fn(async () => {}),
+}))
 // The plugin bundles the engine through a tsup alias, so there is no package to resolve.
 vi.mock('@amemhq/core', async () => ({
   ...(await import('../../../amem-core/src/index.js')),
   ensureCollection,
+  openEmbedding,
+  closeEmbedding,
 }))
 
 // Not installed here: the plugin is built against the host's copy.
@@ -51,6 +57,8 @@ afterEach(() => {
   cancelNightly()
   unwatchAgentEvents()
   ensureCollection.mockClear()
+  openEmbedding.mockClear()
+  closeEmbedding.mockClear()
 })
 
 describe('register() and the service', () => {
@@ -77,5 +85,20 @@ describe('register() and the service', () => {
     services[0].stop()
     expect(timer()).toBeUndefined()
     expect(unsubscribe).toHaveBeenCalledTimes(1)
+    expect(closeEmbedding).toHaveBeenCalledTimes(1)
+  })
+
+  it('start() after stop() embeds again', () => {
+    // OpenClaw stops and starts a retained memory plugin's service on the same module when
+    // it reloads other plugins.
+    const { api, services } = fakeApi({ events: { onAgentEvent: () => () => {} } })
+    register(api as never)
+
+    services[0].start()
+    services[0].stop()
+    services[0].start()
+
+    expect(openEmbedding).toHaveBeenCalledTimes(2)
+    expect(openEmbedding.mock.invocationCallOrder[1]).toBeGreaterThan(closeEmbedding.mock.invocationCallOrder[0])
   })
 })

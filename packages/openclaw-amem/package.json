@@ -16,8 +16,8 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs --out-dir dist",
-    "dev": "tsup src/index.ts --format cjs --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "format": "prettier --check \"src/**/*.ts\"",

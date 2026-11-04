@@ -10,12 +10,17 @@ import { fileURLToPath } from 'node:url'
 // `npm install` outright while the engine was unpublished). No dependency, no
 // leak.
 const amemEngine = fileURLToPath(new URL('../amem-core/src/index.ts', import.meta.url))
+// The engine starts its embedding worker from the file next to its own module, so the
+// worker ships as dist/embed-worker.js beside dist/index.js.
+const embedWorker = fileURLToPath(new URL('../amem-core/src/embed-worker.ts', import.meta.url))
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: { index: 'src/index.ts', 'embed-worker': embedWorker },
   format: ['cjs'],
   clean: true,
   bundle: true,
+  // import.meta.url in this CommonJS bundle: the engine finds its worker file with it.
+  shims: true,
   // @huggingface/transformers uses dynamic imports for ONNX backends
   // bundling it breaks backend detection — keep as external.
   // openai is external too: bundling it inlines ~440KB into every plugin
