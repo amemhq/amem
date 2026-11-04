@@ -9,11 +9,18 @@
  * `amem-migrate` run. See docs/reference/embedding-models.md.
  */
 
-// Dynamic import to avoid issues with CJS bundling
-let pipeline: any = null
-let extractor: any = null
+import * as fs from 'fs'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
+import { Worker } from 'node:worker_threads'
+import { warn } from './config.js'
+import { encodeLocal, loadExtractor, type ExtractorSpec } from './embedding-local.js'
+import type { EmbedRequest, EmbedResponse } from './embed-worker.js'
+
+export { humanBytes } from './bytes.js'
+
 let loadedKey: string | null = null
-let cachedDim: number | null = null
+let cachedDim: { key: string; dim: number } | null = null
 
 /**
  * What a fresh install embeds with.
@@ -47,7 +54,6 @@ let pinnedModel: string | null = null
 export function pinEmbeddingModel(model: string | null): void {
   if (pinnedModel === model) return
   pinnedModel = model
-  extractor = null
   loadedKey = null
   cachedDim = null
 }
@@ -155,108 +161,164 @@ export function getEmbeddingDtype(): string | undefined {
   return process.env.AMEM_EMBED_DTYPE?.trim() || undefined
 }
 
-/**
- * Where model weights are cached, and where to look for ones already on disk.
- *
- * Transformers.js caches into its own install directory and reads no environment
- * variable for it. That is per-copy-of-the-library, so the plugin's copy and any
- * `npx --package=@amemhq/core` invocation each download the same 2.27 GB
- * separately, and every fresh `npx` temp directory downloads it again. Migrating
- * a store meant downloading the model a second time for no reason.
- *
- * `AMEM_MODEL_CACHE` gives every copy one place to share.
- *
- * `AMEM_MODEL_DIR` is the other half: point it at a directory holding the repo
- * layout (`<dir>/Xenova/bge-m3/onnx/model.onnx`, …) and the model is read from
- * there. Downloading 2.27 GB over a slow link, on a machine that cannot reach
- * HuggingFace, or onto several machines from one copy are all the same problem,
- * and the fix is being allowed to put the file there yourself.
- */
-function applyModelPaths(env: { cacheDir: string | null; localModelPath: string; allowLocalModels: boolean }): void {
-  const cache = process.env.AMEM_MODEL_CACHE?.trim()
-  if (cache) env.cacheDir = cache
-  const local = process.env.AMEM_MODEL_DIR?.trim()
-  if (local) {
-    env.localModelPath = local
-    env.allowLocalModels = true
-  }
-}
-
-/**
- * A byte count in the unit that makes it readable.
- *
- * The two files this reports on differ by three orders of magnitude — bge-m3
- * ships a 607 kB graph next to 2.27 GB of weights — so a fixed unit cannot
- * describe both. Hardcoded GB rendered the graph as "0.00 GB", which reads as a
- * failed size lookup rather than a small file.
- */
-export function humanBytes(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`
-  // Bytes get their own branch for the same reason GB was wrong: rounding a
-  // small number into a large unit prints a zero, and a zero reads as a broken
-  // size rather than a small file.
-  if (n >= 1e3) return `${Math.round(n / 1e3)} kB`
-  return `${n} B`
-}
-
-/**
- * Report a download rather than going silent for the length of one.
- *
- * The default model is 2.27 GB. On a slow link that is over an hour with no
- * output at all, which reads as a hang — and a migration that looks hung is one
- * somebody interrupts.
- *
- * It fires on a cached model too, as one 100% line per file, because
- * Transformers.js reports reading the cache with the same progress events it
- * reports a download with. That is why the line says a size: an instant 100% of
- * 2.27 GB is a cache hit, and the same line arriving slowly is a real download.
- */
-function makeProgressReporter(): (e: { status?: string; file?: string; progress?: number; total?: number }) => void {
-  const lastPct = new Map<string, number>()
-  return (e) => {
-    if (e.status !== 'progress' || !e.file || typeof e.progress !== 'number') return
-    // Only the weights are worth reporting; configs and tokenizers are KBs.
-    if (!e.file.endsWith('.onnx') && !e.file.endsWith('.onnx_data')) return
-    const pct = Math.floor(e.progress / 10) * 10
-    if (lastPct.get(e.file) === pct) return
-    lastPct.set(e.file, pct)
-    const size = e.total ? ` of ${humanBytes(e.total)}` : ''
-    console.log(`[amem] downloading ${e.file}: ${pct}%${size}`)
-  }
-}
-
 /** Everything that decides which weights are resident. */
 function extractorKey(): string {
   return `${getEmbeddingModel()}|${getEmbeddingDevice() ?? ''}|${getEmbeddingDtype() ?? ''}`
 }
 
-async function getExtractor() {
-  const wanted = extractorKey()
-  // Re-resolving on every call keeps the env vars honest in tests and lets a
-  // long-lived process pick up a change without a restart; the cached vector
-  // dimension belongs to the OLD model, so drop it with the extractor.
-  if (extractor && loadedKey === wanted) return extractor
-  if (!pipeline) {
-    const mod = await import('@huggingface/transformers')
-    pipeline = mod.pipeline
-    // Set once, on the same import that yields the pipeline: `env` is module
-    // state, so re-applying it per call would be noise.
-    applyModelPaths(mod.env)
-  }
+// ── The embedding worker ──────────────────────────────────────────────────────
+// The model loads and runs in a worker thread, not on the caller's thread. OpenClaw
+// 2026.10.10 keeps a V8 CPU profiler sampling the gateway's main thread on Node 26. On an
+// Apple chip with SME, onnxruntime's KleidiAI kernels run in streaming mode, and a SIGPROF
+// arriving there makes V8's handler execute an illegal instruction: the gateway died 26
+// times in one day. V8 signals only the thread it samples, so in a worker the same load
+// and inference do not crash, and keep their speed: 77 ms per run measured on an M4,
+// against 210 ms with KleidiAI turned off. The 3.3 s main-thread stall while the model
+// loads goes away too.
+//
+// The worker file sits next to this module, so inside OpenClaw it comes from the same
+// verified capture copy as the plugin, and resolves its imports through the dependencies
+// linked there. A worker that exits is replaced. If it cannot start, or exits three times
+// within a minute, embedding moves onto this thread for the rest of the process, with
+// KleidiAI off on macOS arm64: slower, but it cannot crash.
+let worker: Worker | null = null
+let inThread = false
+// Set by closeEmbedding, cleared by openEmbedding. A host that stopped the plugin may still
+// have work in flight in this module instance; that work must not start a worker nothing
+// will ever stop.
+let closed = false
+// Set by loadModel(): this process wants the model resident, not only loaded on demand.
+let keepLoaded = false
+let nextId = 1
+const exits: number[] = []
+const EXITS_BEFORE_IN_THREAD = 3
+const EXIT_WINDOW_MS = 60_000
+const pending = new Map<number, { msg: EmbedRequest; resolve: (r: EmbedResponse) => void }>()
+
+type Answer = Exclude<EmbedResponse, { log: string }>
+
+function workerFile(): string {
+  // __filename where it exists, so that a '#' or '?' in the install path survives; tsup's
+  // shims supply it in the ESM build.
+  const here = typeof __filename === 'string' ? __filename : fileURLToPath(import.meta.url)
+  return path.join(path.dirname(here), `embed-worker${path.extname(here)}`)
+}
+
+function spec(): ExtractorSpec {
   const device = getEmbeddingDevice()
   const dtype = getEmbeddingDtype()
-  extractor = await pipeline('feature-extraction', getEmbeddingModel(), {
-    revision: 'main',
-    progress_callback: makeProgressReporter(),
-    // Omitted entirely when unset, so an unconfigured install gets exactly the
-    // library defaults it got before these existed.
-    ...(device ? { device } : {}),
-    ...(dtype ? { dtype } : {}),
+  return { model: getEmbeddingModel(), ...(device ? { device } : {}), ...(dtype ? { dtype } : {}) }
+}
+
+/** The worker, started if needed, or null once embedding has moved onto this thread. */
+function getWorker(): Worker | null {
+  if (inThread) return null
+  if (worker) return worker
+  const file = workerFile()
+  if (!fs.existsSync(file)) return moveInThread(`no worker file at ${file}`)
+  let w: Worker
+  try {
+    w = new Worker(file)
+  } catch (err) {
+    return moveInThread((err as Error).message)
+  }
+  // Not a reason to keep a CLI alive. It is ref'd while a request waits on it.
+  w.unref()
+  w.on('message', (res: EmbedResponse) => {
+    // Download progress, logged here because hosts capture console output on this thread.
+    if ('log' in res) return console.log(res.log)
+    const job = pending.get(res.id)
+    if (!job) return
+    pending.delete(res.id)
+    if (pending.size === 0) w.unref()
+    job.resolve(res)
   })
-  loadedKey = wanted
-  cachedDim = null
-  return extractor
+  const lost = (why: string) => {
+    if (worker !== w) return
+    const wasLoaded = loadedKey !== null && loadedKey === extractorKey()
+    worker = null
+    loadedKey = null
+    const now = Date.now()
+    exits.push(now)
+    while (exits.length > 0 && now - exits[0] > EXIT_WINDOW_MS) exits.shift()
+    if (exits.length >= EXITS_BEFORE_IN_THREAD) moveInThread(`${exits.length} exits within a minute, last: ${why}`)
+    else warn(`[amem] embedding worker stopped (${why}); starting a new one`)
+    // Whatever was waiting runs again, on a new worker or on this thread.
+    const waiting = [...pending.values()]
+    pending.clear()
+    for (const job of waiting) void dispatch(job.msg).then(job.resolve)
+    // A worker that dies idle takes the model with it. A process that loaded it up front
+    // (amem-api, whose /healthz reports it) gets it back without waiting for a request. Only
+    // that one: a reload is ref'd while it runs, and would keep a CLI from exiting.
+    if (waiting.length === 0 && wasLoaded && keepLoaded) {
+      loadModel().catch((err) => {
+        if (!closed) warn(`[amem] reloading the embedding model failed: ${(err as Error).message}`)
+      })
+    }
+  }
+  w.on('error', (err: unknown) => lost((err as Error)?.message ?? String(err)))
+  w.on('exit', (code) => lost(`exited with code ${code}`))
+  worker = w
+  return w
+}
+
+function moveInThread(why: string): null {
+  if (!inThread) warn(`[amem] embedding worker unavailable (${why}); embedding on this thread instead`)
+  inThread = true
+  return null
+}
+
+async function runInThread(msg: EmbedRequest): Promise<Answer> {
+  const s = { ...msg.spec, disableKleidiAi: process.platform === 'darwin' && process.arch === 'arm64' }
+  try {
+    if (msg.type === 'load') {
+      await loadExtractor(s)
+      return { id: msg.id, ok: true }
+    }
+    return { id: msg.id, ok: true, vector: await encodeLocal(msg.text, s, msg.pooling) }
+  } catch (err) {
+    return { id: msg.id, ok: false, error: (err as Error)?.message ?? String(err) }
+  }
+}
+
+function dispatch(msg: EmbedRequest): Promise<Answer> {
+  if (closed) return Promise.resolve({ id: msg.id, ok: false, error: 'embedding is closed' })
+  const w = getWorker()
+  if (!w) return runInThread(msg)
+  return new Promise((resolve) => {
+    pending.set(msg.id, { msg, resolve: resolve as (r: EmbedResponse) => void })
+    if (pending.size === 1) w.ref()
+    w.postMessage(msg)
+  })
+}
+
+type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never
+
+function request(msg: WithoutId<EmbedRequest>): Promise<Answer> {
+  return dispatch({ ...msg, id: nextId++ } as EmbedRequest)
+}
+
+/**
+ * Stop the embedding worker, for a host that is shutting down or retiring the plugin.
+ * Later calls fail instead of starting another one, until openEmbedding().
+ */
+export async function closeEmbedding(): Promise<void> {
+  closed = true
+  const w = worker
+  worker = null
+  loadedKey = null
+  const waiting = [...pending.values()]
+  pending.clear()
+  for (const job of waiting) job.resolve({ id: job.msg.id, ok: false, error: 'embedding is closed' })
+  if (w) await w.terminate()
+}
+
+/**
+ * Allow embedding again after closeEmbedding(). OpenClaw stops and starts a memory plugin's
+ * service on the same module when it reloads other plugins, so start() must undo stop().
+ */
+export function openEmbedding(): void {
+  closed = false
 }
 
 /**
@@ -268,45 +330,18 @@ async function getExtractor() {
  * forward pass on a model that has to load anyway, and is right for any model.
  */
 export async function getEmbeddingDim(): Promise<number> {
-  if (cachedDim !== null && loadedKey === extractorKey()) return cachedDim
+  const key = extractorKey()
+  if (cachedDim?.key === key && loadedKey === key) return cachedDim.dim
+  // encode() reads the model when it is called, so the width is the one `key` produces even
+  // if the model changes while the probe runs.
   const probe = await encode('dimension probe')
-  cachedDim = probe.length
-  return cachedDim
+  cachedDim = { key, dim: probe.length }
+  return probe.length
 }
 
-/**
- * Pool token embeddings into one vector, then L2 normalize.
- * Matches sentence-transformers encode(normalize_embeddings=True).
- *
- * `cls` takes the first token, which is what BGE- and GTE-family models were
- * trained to read; `mean` averages over the attention mask.
- */
-function poolNormalize(output: number[][], attentionMask: number[], mode: PoolingMode): number[] {
-  const seqLen = output.length
-  const dim = output[0].length
-  const pooled = new Array(dim).fill(0)
-
-  if (mode === 'cls') {
-    for (let j = 0; j < dim; j++) pooled[j] = output[0][j]
-  } else {
-    let maskSum = 0
-    for (let i = 0; i < seqLen; i++) {
-      const m = attentionMask[i]
-      maskSum += m
-      for (let j = 0; j < dim; j++) {
-        pooled[j] += output[i][j] * m
-      }
-    }
-    for (let j = 0; j < dim; j++) {
-      pooled[j] /= Math.max(maskSum, 1e-9)
-    }
-  }
-
-  // L2 normalize
-  let norm = 0
-  for (const v of pooled) norm += v * v
-  norm = Math.sqrt(norm)
-  return pooled.map((v) => v / Math.max(norm, 1e-9))
+/** Record what is resident, unless the model changed while the request ran. */
+function noteLoaded(key: string): void {
+  if (extractorKey() === key) loadedKey = key
 }
 
 /**
@@ -316,34 +351,11 @@ function poolNormalize(output: number[][], attentionMask: number[], mode: Poolin
  * Singleton model, loaded once and reused.
  */
 export async function encode(text: string): Promise<number[]> {
-  const ext = await getExtractor()
-  const pooling = getEmbeddingPooling()
-  const result = await ext(text, { pooling, normalize: true })
-
-  // result.data is a Float32Array of shape [dim]
-  // @huggingface/transformers v3 returns already pooled+normalized when pooling+normalize options given
-  if (result && result.data) {
-    return Array.from(result.data as Float32Array)
-  }
-
-  // Fallback: manual mean pool if result is nested
-  const tensor = result as any
-  if (tensor.dims && tensor.dims.length === 3) {
-    // shape: [1, seq_len, dim]
-    const seqLen = tensor.dims[1]
-    const dim = tensor.dims[2]
-    const raw: number[][] = []
-    for (let i = 0; i < seqLen; i++) {
-      const row: number[] = []
-      for (let j = 0; j < dim; j++) {
-        row.push(tensor.data[i * dim + j])
-      }
-      raw.push(row)
-    }
-    return poolNormalize(raw, new Array(seqLen).fill(1), pooling)
-  }
-
-  throw new Error('Unexpected embedding output shape')
+  const key = extractorKey()
+  const res = await request({ type: 'encode', spec: spec(), text, pooling: getEmbeddingPooling() })
+  if (!res.ok) throw new Error(res.error)
+  noteLoaded(key)
+  return Array.from(res.vector!)
 }
 
 /**
@@ -351,7 +363,11 @@ export async function encode(text: string): Promise<number[]> {
  * pays the download at startup, not on a user's first write.
  */
 export async function loadModel(): Promise<void> {
-  await getExtractor()
+  keepLoaded = true
+  const key = extractorKey()
+  const res = await request({ type: 'load', spec: spec() })
+  if (!res.ok) throw new Error(res.error)
+  noteLoaded(key)
 }
 
 /**
@@ -360,7 +376,7 @@ export async function loadModel(): Promise<void> {
  * free to poll it.
  */
 export function isModelLoaded(): boolean {
-  return extractor !== null
+  return loadedKey !== null && loadedKey === extractorKey()
 }
 
 /**

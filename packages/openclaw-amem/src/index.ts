@@ -32,6 +32,8 @@ import {
   hasTimeFor,
   runInBackground,
   BackgroundPreempted,
+  closeEmbedding,
+  openEmbedding,
   type AmemPluginConfig,
 } from '@amemhq/core'
 import { createHash } from 'crypto'
@@ -751,6 +753,7 @@ function register(api: {
         // throws, and in the gateway's model-catalog worker threads, which never exit and
         // each have their own globalThis, so a timer there is a second nightly job that sees
         // no runs. It starts services only in the gateway and in one-shot diagnostics.
+        openEmbedding()
         const events = (api as any).runtime?.events
         if (typeof events?.onAgentEvent === 'function') {
           watchAgentEvents((listener: (evt: AgentEvent) => void) => events.onAgentEvent(listener))
@@ -769,6 +772,8 @@ function register(api: {
         cancelNightly()
         unwatchAgentEvents()
         logger.info('openclaw-amem: stopped')
+        // Returned so that the host waits for the worker to end before it retires this copy.
+        return closeEmbedding()
       },
     })
   } else {

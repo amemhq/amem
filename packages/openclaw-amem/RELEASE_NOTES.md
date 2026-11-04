@@ -5,6 +5,18 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.6
+
+**The gateway no longer crashes on an M4 Mac with OpenClaw 2026.10.10.**
+That OpenClaw version checks the gateway for slow work many times a second.
+On an Apple M4, a check that arrives while the plugin's search model is
+working stops the whole gateway. On one machine this happened 26 times in one
+day. The plugin now runs the model in a separate thread of the gateway, which
+the check does not touch. The model runs at full speed, and the gateway no
+longer pauses for several seconds while the model loads.
+
+There is nothing to configure. Update the plugin. Restart the gateway.
+
 ## 2.1.5
 
 **You hear about it when the model refuses your key.** If the API endpoint
