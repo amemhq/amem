@@ -782,6 +782,27 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     return agentFilter(agentId, subject)
   }
 
+  /** The note with this id, or null when there is none. A failed read throws. */
+  async function fetchNote(id: string): Promise<MemoryNote | null> {
+    const result = (await qdrant('POST', `/collections/${col}/points`, {
+      ids: [id],
+      with_payload: true,
+      with_vector: true,
+    })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+    return result.length ? pointToNote(result[0]) : null
+  }
+
+  /**
+   * The note `caller` may write, or null when it is missing or not theirs. Not getNote():
+   * that reports a failed read as a missing note, and a write check must refuse when it
+   * cannot read the note, not skip itself. Reads as the engine, since gating this read on
+   * the policy it exists to evaluate would be circular.
+   */
+  async function writableNote(id: string, caller: string): Promise<MemoryNote | null> {
+    const note = await fetchNote(id)
+    return note && canWrite(note, caller) ? note : null
+  }
+
   return {
     async addNote(note: MemoryNote): Promise<void> {
       await ensureCollection(col)
@@ -803,13 +824,8 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     async getNote(id: string, reader: string): Promise<MemoryNote | null> {
       await ensureCollection(col)
       try {
-        const result = (await qdrant('POST', `/collections/${col}/points`, {
-          ids: [id],
-          with_payload: true,
-          with_vector: true,
-        })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
-        if (!result.length) return null
-        const note = pointToNote(result[0])
+        const note = await fetchNote(id)
+        if (!note) return null
         if (reader !== SYSTEM_ACTOR && !canRead(note, reader)) return null
         return note
       } catch {
@@ -856,14 +872,13 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
 
     /**
      * Story 33: enforces the writers policy. Returns false — without writing —
-     * when the caller may not write. This fetch-then-check path exists for callers
+     * when the caller may not write the note or it does not exist, and throws when
+     * the note cannot be read. This fetch-then-check path exists for callers
      * that only have an id (the plugin's CRUD hook); callers already holding the
      * note can check `canWrite` themselves and skip a round trip.
      *
      * `caller` is required. Pass `SYSTEM_ACTOR` for the engine's own maintenance
-     * writes. The self-read below is a genuine `SYSTEM_ACTOR` case: it fetches the
-     * note in order to decide whether the caller may write it, and gating that
-     * fetch on the same policy it exists to evaluate would be circular.
+     * writes, which skip the check.
      */
     async updateNoteContent(
       id: string,
@@ -875,8 +890,8 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       await ensureCollection(col)
       let existing: MemoryNote | null = null
       if (caller !== SYSTEM_ACTOR) {
-        existing = await this.getNote(id, SYSTEM_ACTOR)
-        if (existing && !canWrite(existing, caller)) return false
+        existing = await writableNote(id, caller)
+        if (!existing) return false
       }
       await qdrant('PUT', `/collections/${col}/points/vectors?wait=true`, {
         points: [{ id, vector: embedding }],
@@ -993,10 +1008,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     /** Story 33: see `updateNoteContent` — returns false, unwritten, when denied. */
     async invalidateNote(id: string, caller: string): Promise<boolean> {
       await ensureCollection(col)
-      if (caller !== SYSTEM_ACTOR) {
-        const existing = await this.getNote(id, SYSTEM_ACTOR)
-        if (existing && !canWrite(existing, caller)) return false
-      }
+      if (caller !== SYSTEM_ACTOR && !(await writableNote(id, caller))) return false
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
         payload: { is_active: false },
         points: [id],

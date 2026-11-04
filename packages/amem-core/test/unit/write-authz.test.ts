@@ -119,6 +119,17 @@ describe('gap A — high-similarity dedup must not overwrite an unowned note', (
     expect(ctx.updateNoteContent).toHaveBeenCalledOnce()
     expect(id).toBe(authorized.id)
   })
+
+  it('inserts its own note when the match it would fold into is gone', async () => {
+    const own = { ...foreignSharedNote(), agent_id: 'agentB', owner: 'agentB', writers: ['agentB'] }
+    const { ctx, added } = makeCtx({ note: own, score: 0.93 })
+    vi.mocked(ctx.updateNoteContent).mockResolvedValueOnce(false)
+
+    const id = await addMemory(CONTENT, 'agentB', { storageCtx: ctx })
+
+    expect(added).toHaveLength(1)
+    expect(id).toBe(added[0].id)
+  })
 })
 
 describe('gap F — bidirectional back-link must not be written into an unowned note', () => {

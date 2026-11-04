@@ -23,11 +23,10 @@ import type { MemoryNote } from './storage.js'
  * now required, and this is what a call declares when it genuinely has no agent
  * on whose behalf it acts.
  *
- * Two call sites use it, both inside storage.ts: the fetch that
- * `updateNoteContent` and `invalidateNote` perform in order to *evaluate* the
- * write policy. Gating that read on the policy it exists to check would be
- * circular. Everything else passes a real agent id — the audit that prompted this
- * found the identity was already in scope at every one of them.
+ * No call site passes it today. The fetch that `updateNoteContent` and
+ * `invalidateNote` perform to *evaluate* the write policy used to, and now reads
+ * the note directly. Everything else passes a real agent id — the audit that
+ * prompted this found the identity was already in scope at every one of them.
  *
  * The prefix keeps it from colliding with any plausible agent id. It is not a
  * secret and does not need to be: amem is self-hosted, the operator owns every
