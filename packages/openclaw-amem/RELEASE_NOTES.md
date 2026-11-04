@@ -5,6 +5,14 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.7
+
+**The plugin's icon shows on ClawHub again.** ClawHub and OpenClaw now read
+the icon only from a file inside the plugin. The plugin gave a web address, so
+they showed a default icon instead. The icon is now included in the plugin.
+
+There is nothing to configure. Update the plugin.
+
 ## 2.1.6
 
 **The gateway no longer crashes on an M4 Mac with OpenClaw 2026.10.10.**
