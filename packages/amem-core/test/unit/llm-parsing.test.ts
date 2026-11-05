@@ -143,3 +143,44 @@ describe('④ configurable client timeout', () => {
     expect(AnthropicCtor.mock.calls[0][0]).toMatchObject({ timeout: 12000 })
   })
 })
+
+describe('CRUD about-speaker flag', () => {
+  const ask = async (about: unknown, env: Record<string, string> = {}) => {
+    const item: Record<string, unknown> = { action: 'NEW', fact: 'f' }
+    if (about !== undefined) item.about = about
+    anthropicCreate.mockResolvedValue(asAnthropic(JSON.stringify([item])))
+    const { llmCrudDecision } = await loadLlm(env)
+    return llmCrudDecision('I like tea a lot', 'noted', [], { speaker: true })
+  }
+
+  it('reads "world" as a general fact', async () => {
+    expect((await ask('world'))[0].aboutSpeaker).toBe(false)
+  })
+
+  it('reads "speaker" as about the speaker', async () => {
+    expect((await ask('speaker'))[0].aboutSpeaker).toBe(true)
+  })
+
+  it('treats a missing, invalid or uncertain answer as about the speaker', async () => {
+    expect((await ask(undefined))[0].aboutSpeaker).toBe(true)
+    expect((await ask('maybe'))[0].aboutSpeaker).toBe(true)
+    expect((await ask(false))[0].aboutSpeaker).toBe(true)
+  })
+
+  it('sets no flag when the speaker question was not asked', async () => {
+    anthropicCreate.mockResolvedValue(asAnthropic(JSON.stringify([{ action: 'NEW', fact: 'f', about: 'world' }])))
+    const { llmCrudDecision } = await loadLlm()
+    const ops = await llmCrudDecision('I like tea a lot', 'noted', [])
+    expect(ops[0]).not.toHaveProperty('aboutSpeaker')
+  })
+
+  it.each(['en', 'zh'])('asks for the field only when there is a speaker (%s prompt)', async (locale) => {
+    anthropicCreate.mockResolvedValue(asAnthropic('[]'))
+    const { llmCrudDecision } = await loadLlm({ AMEM_PROMPT_LOCALE: locale })
+    await llmCrudDecision('I like tea a lot', 'noted', [], { speaker: true })
+    await llmCrudDecision('I like tea a lot', 'noted', [])
+    const prompts = anthropicCreate.mock.calls.map((c) => c[0].messages[0].content as string)
+    expect(prompts[0]).toContain('"about"')
+    expect(prompts[1]).not.toContain('"about"')
+  })
+})

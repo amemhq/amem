@@ -7,6 +7,38 @@ format that npm uses.
 
 ## 2.1.9
 
+**Memories the plugin saves on its own now belong to the person who said
+them.** Before, only memories that the agent saved on request could be marked as
+about one person. Memories saved after a chat turn were visible to everyone the
+agent talks to. Now, in a direct chat, the plugin marks facts about the person
+with the channel and the sender ID, for example `discord:1234`. General facts,
+such as how a tool works, stay unmarked so everyone can find them.
+
+**One person's chat no longer changes another person's memories by itself.**
+When the plugin updated or removed a memory after a turn, it looked at every
+memory, including ones marked for someone else. It now looks only at the
+speaker's memories and the general ones, and checks again before it changes one.
+A memory that names several people is left alone. Merging and linking of similar
+memories, including the nightly pass, now keep memories about different people
+apart. A memory search that names no person also defaults to the speaker.
+
+**If you talk to the agent from more than one app, link your accounts in
+OpenClaw's identityLinks so it knows they are you.** Without links, each app
+counts as a different person with its own memories. With links, the plugin
+marks memories with the name from identityLinks, for example `identity:alice`.
+Memories that were marked before you added the links keep their old mark.
+
+This is separation, not a lock. The agent can still search for or add to
+another person's memories if it names them. A search that names no person sees
+everyone's memories in group chats and in runs with no sender. Memory tools that
+OpenClaw itself calls, such as the memory wiki, are not limited to the speaker.
+If the plugin is unsure whether a new fact replaces a general memory, and the
+fact is about the speaker, the general memory is removed and the fact is kept
+for that speaker only. Group chats and runs with no sender, such as scheduled
+jobs, are not marked. A group that you set to share the main session
+is not recognised as a group, so it is marked by whoever spoke last. Memories
+saved before this version stay unmarked and visible to everyone.
+
 **Quality reports go to their own folder and never replace a file.** The
 `memory_quality_scan` tool writes a report of memories that need a look. It
 used to write into whatever folder the gateway ran in, under any name the

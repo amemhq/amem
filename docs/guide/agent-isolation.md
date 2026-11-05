@@ -408,6 +408,7 @@ This principle shapes every design decision in openclaw-amem's isolation model:
 
 ### What is NOT yet protected
 
+- **Per-person separation is not access control** — `subjects` tags separate what one person's chat sees from another's, but the model can still search with any subject, and notes without subjects are visible to every caller of the agent. See [Memories about different people](../reference/configuration.md#memories-about-different-people).
 - **`writers` enforcement** — Story 32 stores the `writers` field but does not enforce it. A `dev` agent can technically evolve or soft-delete a shared note written by `main`. Story 33 will add a hard check.
 - **Prompt injection via shared notes** — A compromised agent can write adversarial content into a shared note that manipulates another agent's behavior when retrieved. This is a known attack class ([arXiv:2604.16548] §4). Mitigation requires content validation at write time (future work).
 
