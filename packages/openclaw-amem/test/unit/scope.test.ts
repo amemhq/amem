@@ -52,6 +52,18 @@ describe('resolveAgentId', () => {
     expect(resolveAgentId(undefined, cfg())).toBe('main')
     expect(resolveAgentId({}, cfg())).toBe('main')
   })
+
+  // Storage read '' as "no agent" and returned every agent's notes. An empty id
+  // must not fall through to another identity either.
+  it('throws on an empty ctx.agentId instead of falling through', () => {
+    expect(() => resolveAgentId({ agentId: '', sessionKey: 'agent:fromkey:s' }, cfg({ agentId: 'fromcfg' }))).toThrow(
+      /agentId is empty/
+    )
+  })
+
+  it('throws on an empty pluginConfig.agentId', () => {
+    expect(() => resolveAgentId(undefined, cfg({ agentId: '' }))).toThrow(/agentId is empty/)
+  })
 })
 
 describe('buildScope', () => {
@@ -104,5 +116,13 @@ describe('buildScope', () => {
 
     expect(scope.collection).toBe('dedicated')
     expect(factory).toHaveBeenCalledWith('dedicated', true)
+  })
+
+  it('throws on an empty effective agentId and builds no storage context', () => {
+    const factory = makeFactory()
+
+    expect(() => buildScope('raw', { agents: { raw: { agentId: '' } } }, factory)).toThrow(/agentId is empty/)
+    expect(() => buildScope('', {}, factory)).toThrow(/agentId is empty/)
+    expect(factory).not.toHaveBeenCalled()
   })
 })

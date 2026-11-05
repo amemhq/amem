@@ -40,11 +40,23 @@ export function parseAgentIdFromSessionKey(sessionKey?: string): string | undefi
 }
 
 /**
+ * An empty agentId is not a namespace. Refuse it rather than fall through to
+ * another identity.
+ */
+function nonEmpty(agentId: string): string {
+  if (agentId === '') {
+    throw new Error('amem: agentId is empty; set a non-empty agentId in the plugin config or the host context')
+  }
+  return agentId
+}
+
+/**
  * Resolve the agentId for a call, in precedence order:
  *   ctx.agentId → parse(ctx.sessionKey) → pluginConfig.agentId → 'main'
+ * Throws when the result is empty.
  */
 export function resolveAgentId(ctx: AgentCtx | undefined, pluginConfig: AmemPluginConfig): string {
-  return ctx?.agentId ?? parseAgentIdFromSessionKey(ctx?.sessionKey) ?? pluginConfig.agentId ?? 'main'
+  return nonEmpty(ctx?.agentId ?? parseAgentIdFromSessionKey(ctx?.sessionKey) ?? pluginConfig.agentId ?? 'main')
 }
 
 /**
@@ -53,6 +65,7 @@ export function resolveAgentId(ctx: AgentCtx | undefined, pluginConfig: AmemPlug
  * runtime `amem` dependency.
  *
  * Mode B (agent has its own dedicated collection) skips the shared-agent filter.
+ * Throws when the effective agentId is empty.
  */
 export function buildScope(
   rawAgentId: string,
@@ -60,7 +73,7 @@ export function buildScope(
   createStorageContext: (collection?: string, modeBIsolated?: boolean) => StorageContext
 ): AgentScope {
   const agentCfg = pluginConfig.agents?.[rawAgentId] ?? {}
-  const effectiveAgentId = agentCfg.agentId ?? rawAgentId
+  const effectiveAgentId = nonEmpty(agentCfg.agentId ?? rawAgentId)
   const effectiveCollection = agentCfg.collection ?? pluginConfig.collection ?? undefined
   // Mode B: agent has its own dedicated collection → skip the shared-agent filter.
   const modeBIsolated = !!agentCfg.collection

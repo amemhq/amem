@@ -990,7 +990,9 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         with_vector: true,
         limit: 10000,
       }
-      if (agentId) body.filter = scopedAgentFilter(agentId, subject)
+      // Only undefined means the whole collection. An empty agentId still gets the
+      // agent and is_active clauses, so it cannot read every agent's notes.
+      if (agentId !== undefined) body.filter = scopedAgentFilter(agentId, subject)
 
       const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
         points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
@@ -1042,7 +1044,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     async countNotes(agentId?: string): Promise<number> {
       await ensureCollection(col)
       const body: Record<string, unknown> = { exact: true }
-      if (agentId) body.filter = scopedAgentFilter(agentId)
+      if (agentId !== undefined) body.filter = scopedAgentFilter(agentId)
       const result = (await qdrant('POST', `/collections/${col}/points/count`, body)) as { count: number }
       return result.count
     },
