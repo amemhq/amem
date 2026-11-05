@@ -52,10 +52,10 @@ export function canWrite(note: Pick<MemoryNote, 'owner' | 'writers'>, callerAgen
  * True when the caller owns it, is listed in `readers`, or the note is public
  * (`readers` contains `'*'`, which is how a shared-scope write is stored).
  *
- * Queries already filter by `agent_id`, so list/search paths never surface an
- * unreadable note. This guards the one primitive that bypasses that filter —
- * `getNote(id)` fetches straight by UUID — and the link-neighbourhood walks that
- * use it: a shared note's `links[]` can name its owner's PRIVATE notes, so
+ * Queries filter by `agent_id`, and list/search results in a shared collection
+ * are checked with this too. It also guards the one primitive that bypasses that
+ * filter — `getNote(id)` fetches straight by UUID — and the link-neighbourhood
+ * walks that use it: a shared note's `links[]` can name its owner's PRIVATE notes, so
  * following those links would otherwise read memory the caller may not see.
  */
 export function canRead(note: Pick<MemoryNote, 'owner' | 'readers'>, callerAgentId: string): boolean {

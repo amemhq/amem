@@ -87,7 +87,7 @@ Isolation is the default. Sharing is an explicit exception (per arXiv:2604.16548
 ```ts
 import { configure, addMemory, searchMemory, createStorageContext } from '@amemhq/core'
 
-configure({ dataDir: '~/.myapp' }) // evo counter + consolidation logs (default ~/.amem, or AMEM_DATA_DIR)
+configure({ dataDir: '~/.myapp' }) // evo counter, consolidation logs, review batches (default ~/.amem, or AMEM_DATA_DIR)
 
 const storageCtx = createStorageContext(/* collection */ undefined, /* modeBIsolated */ false)
 await addMemory('The player prefers building with oak.', 'game-agent', { storageCtx })

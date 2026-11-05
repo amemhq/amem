@@ -1,7 +1,8 @@
 /**
  * config.ts — runtime configuration for the amem engine.
  *
- * `dataDir` holds the evolution-throttle counter and consolidation logs.
+ * `dataDir` holds the evolution-throttle counter, consolidation logs and, unless
+ * AMEM_REVIEW_DIR is set, quality review batches (`amem-reviews/`).
  * Defaults to ~/.amem so the engine stays framework-agnostic; the OpenClaw
  * plugin calls configure({ dataDir: '<home>/.openclaw' }) to preserve its
  * existing on-disk location. Override via AMEM_DATA_DIR env var or configure().

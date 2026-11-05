@@ -466,22 +466,17 @@ function register(api: {
           name: 'memory_quality_scan',
           label: 'Memory Quality Scan (A-MEM)',
           description:
-            'Scan all memories for quality issues (too short, expired ephemeral, conflicts) and generate a review batch file.',
+            'Scan all memories for quality issues (too short, expired ephemeral, conflicts) and generate a review batch file in AMEM_REVIEW_DIR (default ~/.openclaw/amem-reviews).',
+          // No file name parameter: the model does not choose which file is written.
           parameters: {
             type: 'object',
-            properties: {
-              outputPath: {
-                type: 'string',
-                description:
-                  'Custom filename for the review batch (optional, auto-generates if omitted). A bare filename only — it is written under AMEM_REVIEW_DIR; a path with directories is rejected.',
-              },
-            },
+            properties: {},
             required: [],
           },
-          async execute(_toolCallId: string, params: { outputPath?: string }) {
+          async execute() {
             const start = Date.now()
             try {
-              const filePath = await generateReviewBatch(scope.agentId, params.outputPath)
+              const filePath = await generateReviewBatch(scope.agentId)
               logger.info(`openclaw-amem: memory_quality_scan OK path=${filePath} (${Date.now() - start}ms)`)
               return {
                 content: [{ type: 'text', text: `Quality scan complete. Review batch saved to: ${filePath}` }],

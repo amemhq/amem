@@ -305,11 +305,11 @@ These environment variables override plugin defaults at runtime. They are useful
 | `AMEM_MODEL_CACHE` | the Transformers.js install directory | Where model weights are cached. The library's own default is inside its install directory, so the plugin's copy and every `npx --package=@amemhq/core` run download the same 2.27 GB separately. Point them all at one path and they share it. |
 | `AMEM_MODEL_DIR` | unset | Reads model weights from disk instead of downloading them. Expects the repo layout — `<dir>/Xenova/bge-m3/onnx/model.onnx`. Use this for slow links, air-gapped machines, or when you seed several machines from one copy. |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
-| `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
+| `AMEM_REVIEW_DIR` | `<data dir>/amem-reviews` (`~/.openclaw/amem-reviews` in the plugin) | Output directory for quality review batch files. A batch never overwrites an existing file. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |
 | `AMEM_PROMPT_LOCALE` | `en` | Prompt language for memory CRUD, merge, and evolution functions. Set to `zh` for Chinese prompts (better for Chinese-primary users). |
 
-> `AMEM_DATA_DIR` (the engine's on-disk location for the evolution counter and consolidation logs) is read by the engine but **fixed to `~/.openclaw` by the plugin**. It has no effect when you run as the OpenClaw plugin. It applies only when you use [`@amemhq/core`](https://www.npmjs.com/package/@amemhq/core) directly.
+> `AMEM_DATA_DIR` (the engine's on-disk location for the evolution counter, consolidation logs and, by default, review batches) is read by the engine but **fixed to `~/.openclaw` by the plugin**. It has no effect when you run as the OpenClaw plugin. It applies only when you use [`@amemhq/core`](https://www.npmjs.com/package/@amemhq/core) directly.
 
 ### Example: run smoke test with Gemini
 

@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { listNotes, patchNotePayload, type MemoryNote } from './storage.js'
 import { canWrite } from './auth.js'
+import { getDataDir } from './config.js'
 import type { PromptLocale } from './prompts.js'
 
 const LOCALE: PromptLocale = (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
@@ -63,7 +64,18 @@ export async function scanLowQuality(agentId: string): Promise<LowQualityItem[]>
 
 // ── generateReviewBatch ───────────────────────────────────────────────────────
 
-const DEFAULT_OUTPUT_DIR = process.env.AMEM_REVIEW_DIR || process.cwd()
+/**
+ * Where review batches go: AMEM_REVIEW_DIR, else `amem-reviews` in the data directory.
+ * Read per call, so the host's configure({ dataDir }) applies. It used to default to the
+ * process's working directory, which for a gateway can be the agent workspace, holding
+ * AGENTS.md and the like.
+ */
+function reviewRoot(): string {
+  return path.resolve(process.env.AMEM_REVIEW_DIR || path.join(getDataDir(), 'amem-reviews'))
+}
+
+/** The only names a batch may have, auto-numbered or chosen by a caller of this API. */
+const BATCH_NAME = /^amem-review-[\w.-]{1,64}\.md$/
 
 function nextBatchNumber(dir: string): number {
   let max = 0
@@ -109,27 +121,19 @@ function severityBadge(reasons: LowQualityReason[]): string {
   return '🟠 CONFLICT'
 }
 
+/**
+ * Write a review batch and return its path. It never overwrites a file: the write fails if
+ * the name is taken.
+ *
+ * `outputPath` is a file name, not a path, and must look like `amem-review-<name>.md`. The
+ * plugin's memory_quality_scan tool no longer passes one; a name chosen by a prompt-injected
+ * agent could otherwise be AGENTS.md, a dotfile or a config file in the review root
+ * (ClawHub review of 2.1.8). Operators choose the root with AMEM_REVIEW_DIR.
+ */
 export async function generateReviewBatch(agentId: string, outputPath?: string): Promise<string> {
-  // outputPath is a bare filename, not a path. It arrives from the
-  // memory_quality_scan tool, so a prompt-injected agent could otherwise hand
-  // us an absolute path or a ../ traversal and overwrite any file the process
-  // can write (CodeQL js/path-injection). path.basename() strips every
-  // directory component, so the write can only ever land in the review root;
-  // we reject anything that carried a directory part loudly rather than
-  // silently rewriting it. Operators choose the root with AMEM_REVIEW_DIR.
-  const root = path.resolve(DEFAULT_OUTPUT_DIR)
-  let filePath: string
-  let batchN: number
-  if (outputPath) {
-    const name = path.basename(outputPath)
-    if (name !== outputPath || name === '' || name === '.' || name === '..') {
-      throw new Error(`[quality] outputPath 必须是纯文件名（不含目录）: ${outputPath}`)
-    }
-    filePath = path.join(root, name)
-    batchN = 0
-  } else {
-    batchN = nextBatchNumber(root)
-    filePath = path.join(root, `amem-review-batch${batchN}.md`)
+  const root = reviewRoot()
+  if (outputPath && !BATCH_NAME.test(outputPath)) {
+    throw new Error(`[quality] outputPath must be a file name like amem-review-<name>.md: ${outputPath}`)
   }
 
   const items = await scanLowQuality(agentId)
@@ -143,7 +147,8 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
   const applyHint =
     LOCALE === 'zh' ? '勾选后交给助手处理这些条目' : 'Tick your choices, then ask the assistant to act on them'
 
-  lines.push(`# ${title} — Batch ${batchN || 'custom'}`)
+  // The heading carries the batch number, which is settled only when the file is written.
+  lines.push('')
   lines.push('')
   lines.push(`> ${genLabel}：${now} | ${countLabel}`)
   lines.push(`> ${applyHint}`)
@@ -240,8 +245,23 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
     lines.push('')
   }
 
-  fs.mkdirSync(path.dirname(filePath), { recursive: true })
-  fs.writeFileSync(filePath, lines.join('\n'), 'utf8')
+  const write = (file: string, batch: string): string => {
+    lines[0] = `# ${title} — Batch ${batch}`
+    fs.writeFileSync(file, lines.join('\n'), { encoding: 'utf8', flag: 'wx' })
+    return file
+  }
+  fs.mkdirSync(root, { recursive: true })
+  if (outputPath) return write(path.join(root, outputPath), 'custom')
 
-  return filePath
+  // Numbered at write time rather than before the scan, so two scans running at once each
+  // take the next free number instead of one failing on the other's file.
+  let n = nextBatchNumber(root)
+  for (let tries = 0; tries < 100; tries++, n++) {
+    try {
+      return write(path.join(root, `amem-review-batch${n}.md`), String(n))
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+  }
+  throw new Error(`[quality] no free review batch number in ${root}`)
 }
