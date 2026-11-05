@@ -21,9 +21,11 @@ memories and memories that were already removed. The nightly cleanup could
 also combine other agents' private memories. The plugin now refuses an empty
 `agentId`.
 
-If your config sets `agentId` or `agents.<name>.agentId` to `""`, the plugin
-does not start. Remove the setting or give it a name. Otherwise there is
-nothing to configure. Update the plugin. Restart the gateway.
+If your config sets `agentId` to `""`, the plugin does not start, and the
+rest of the gateway runs without memory. If it sets `agents.<name>.agentId` to
+`""`, memory fails for that agent only. Remove the setting or give it a name.
+Otherwise there is nothing to configure. Update the plugin. Restart the
+gateway.
 
 ## 2.1.7
 

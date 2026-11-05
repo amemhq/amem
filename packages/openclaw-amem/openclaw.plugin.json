@@ -89,7 +89,6 @@
       },
       "agentId": {
         "type": "string",
-        "minLength": 1,
         "default": "main",
         "description": "Agent namespace for memory isolation."
       },
@@ -167,7 +166,6 @@
           "properties": {
             "agentId": {
               "type": "string",
-              "minLength": 1,
               "description": "Override the effective agentId namespace."
             },
             "collection": {

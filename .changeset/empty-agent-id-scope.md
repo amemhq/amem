@@ -13,8 +13,12 @@ collection, other agents' private and invalidated notes included, and
 always filters. Both now filter whenever agentId is not `undefined`; only
 `undefined` reads the whole collection.
 
-The plugin passed `''` through: `resolveAgentId()` uses `??`, and the manifest
-set no `minLength`. `resolveAgentId()` and `buildScope()` now throw on an empty
-agentId, and `agentId` and `agents.*.agentId` get `minLength: 1`. An empty
+The plugin passed `''` through, because `resolveAgentId()` uses `??`.
+`resolveAgentId()` and `buildScope()` now throw on an empty agentId. An empty
 `agentId` in the config fails registration. An empty `ctx.agentId` fails that
-call rather than falling through to the session key, the config or `main`.
+call rather than falling through to the session key, the config or `main`. The
+manifest gets no `minLength`: OpenClaw treats a plugin config that fails its
+schema as an invalid config and does not start the gateway at all.
+
+An empty agentId that an earlier version wrote to the nightly owed file could
+never settle, so it failed every night. The owed file now drops it on read.

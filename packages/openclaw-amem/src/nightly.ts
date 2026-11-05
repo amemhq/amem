@@ -95,6 +95,9 @@ function readFile(file: string): Owed {
     const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as { agents?: Record<string, Partial<OwedAgent>> }
     const agents: Record<string, OwedAgent> = {}
     for (const [id, entry] of Object.entries(data.agents ?? {})) {
+      // Before 2.1.8 an empty agentId could be owed. It can no longer be merged, so it would
+      // stay owed and fail every night; the next write of the file drops it.
+      if (id === '') continue
       if (typeof entry?.from === 'string' && typeof entry.wrote === 'string') {
         agents[id] = { from: entry.from, wrote: entry.wrote }
       }
