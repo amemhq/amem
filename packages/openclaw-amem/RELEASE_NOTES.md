@@ -5,6 +5,17 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.8
+
+**Another agent's protected memories stay protected when the database has a
+problem.** Before the plugin changes or removes a memory, it checks that your
+agent may write it. If the plugin could not read the memory for that check, for
+example because Qdrant returned an error, it skipped the check and made the
+change anyway. It now refuses the change. Only agents that share one memory
+store were affected.
+
+There is nothing to configure. Update the plugin. Restart the gateway.
+
 ## 2.1.7
 
 **The plugin's icon shows on ClawHub again.** ClawHub and OpenClaw now read

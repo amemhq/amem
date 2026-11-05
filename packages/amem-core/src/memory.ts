@@ -225,8 +225,10 @@ export async function addMemory(
     // our own note rather than overwriting someone else's memory.
     if (canWrite(topMatch[0].note, agentId)) {
       console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
-      await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash, agentId)
-      return topMatch[0].note.id
+      // False when the note went away since the search: insert this one instead.
+      if (await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash, agentId)) {
+        return topMatch[0].note.id
+      }
     }
     console.log(
       `[add] dedup: high-sim match ${topMatch[0].note.id.slice(0, 8)} is not writable by ${logSafe(agentId)} — inserting a new note instead`
@@ -828,13 +830,16 @@ export async function mergeSimilarNotes(
       const mergedContent = judgment.mergedContent || pendingNote.content
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)
-      await ctx.patchNotePayload(bestNeighbor.id, {
-        evolution_history: JSON.stringify(oldHistory),
-        evolution_type: 'EVOLVE',
-      })
-      await ctx.deleteNote(pendingNote.id)
-      evolvedCount++
+      // The pending note is deleted only once the merge is written; otherwise it stays
+      // pending for the next run.
+      if (await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)) {
+        await ctx.patchNotePayload(bestNeighbor.id, {
+          evolution_history: JSON.stringify(oldHistory),
+          evolution_type: 'EVOLVE',
+        })
+        await ctx.deleteNote(pendingNote.id)
+        evolvedCount++
+      }
     } else if (judgment.type === 'CONFLICT') {
       await ctx.patchNotePayload(pendingNote.id, { pending_merge: false, conflict: true, evolution_type: 'CONFLICT' })
       await ctx.patchNotePayload(bestNeighbor.id, { conflict: true, evolution_type: 'CONFLICT' })
@@ -852,13 +857,14 @@ export async function mergeSimilarNotes(
       const mergedContent = judgment.mergedContent || `${bestNeighbor.content}；${pendingNote.content}`
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)
-      await ctx.patchNotePayload(bestNeighbor.id, {
-        evolution_history: JSON.stringify(oldHistory),
-        evolution_type: 'EXPAND',
-      })
-      await ctx.deleteNote(pendingNote.id)
-      evolvedCount++
+      if (await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)) {
+        await ctx.patchNotePayload(bestNeighbor.id, {
+          evolution_history: JSON.stringify(oldHistory),
+          evolution_type: 'EXPAND',
+        })
+        await ctx.deleteNote(pendingNote.id)
+        evolvedCount++
+      }
     } else {
       // NEW — just clear pending_merge
       await ctx.patchNotePayload(pendingNote.id, { pending_merge: false, evolution_type: 'NEW' })
@@ -919,10 +925,12 @@ export async function mergeSimilarNotes(
 
       const newEmbedding = await encode(result.merged)
       const newHash = createHash('md5').update(result.merged).digest('hex')
-      await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash, agentId)
-      await ctx.deleteNote(dropNote.id)
-      deletedIds.add(dropNote.id)
-      mergedCount++
+      // Drop the other note only once the merged text is written, or both are lost.
+      if (await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash, agentId)) {
+        await ctx.deleteNote(dropNote.id)
+        deletedIds.add(dropNote.id)
+        mergedCount++
+      }
     }
 
     // Rate-limit: 200ms between LLM calls
