@@ -5,6 +5,19 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.9
+
+**Quality reports go to their own folder and never replace a file.** The
+`memory_quality_scan` tool writes a report of memories that need a look. It
+used to write into whatever folder the gateway ran in, under any name the
+agent chose, and it replaced a file that had the same name. That folder can
+hold files such as `AGENTS.md`. Reports now go to `~/.openclaw/amem-reviews`,
+with names the plugin picks, and an existing file is never replaced. The tool
+is off unless you turned it on. To keep reports somewhere else, set
+`AMEM_REVIEW_DIR`.
+
+Update the plugin. Restart the gateway.
+
 ## 2.1.8
 
 **Another agent's protected memories stay protected when the database has a

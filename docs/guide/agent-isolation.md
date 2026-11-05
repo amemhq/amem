@@ -51,7 +51,7 @@ Every `MemoryNote` carries three access control fields:
 |-------|------|---------|---------|
 | `owner` | `string` | `"main"` | The agent that originally wrote this note. Immutable after creation. |
 | `readers` | `string[]` | `["main"]` or `["*"]` | Which agents can retrieve this note. `["*"]` means all agents. |
-| `writers` | `string[]` | `["main"]` | Which agents can modify this note. **Not yet enforced** — Story 33. |
+| `writers` | `string[]` | `["main"]` | Which agents can modify this note. Checked on every write (Story 33). |
 
 #### `owner`
 
@@ -61,7 +61,7 @@ Example: A note written by `dev` always has `owner: "dev"`, even if `main` later
 
 #### `readers`
 
-The `readers` field controls which agents' `searchMemory` calls will return this note.
+The `readers` field says which agents may read this note. Searches filter on `agent_id` in the query, which every write keeps in step with `readers`. In a shared collection (mode A) they then drop any result that `readers` does not allow. A mode B collection belongs to one agent and is not filtered again.
 
 ```ts
 // Private note — only "main" can retrieve it
@@ -83,9 +83,9 @@ This means each agent sees only its own private notes plus notes in the shared s
 
 #### `writers`
 
-The `writers` field records which agents are authorized to modify (evolve, update, soft-delete) this note. Currently **schema-only**: the plugin stores the field in Qdrant but does not check it at write time. Story 33 will add enforcement.
+The `writers` field records which agents are authorized to modify (evolve, update, soft-delete) this note. Every write checks it (Story 33), and a write the engine cannot check, because it cannot read the note, is refused.
 
-Example: A shared note written by `main` has `writers: ["main"]`. This signals that only `main` is the intended modifier, but `dev` can currently update it without a hard error. This will change in Story 33.
+Example: A shared note written by `main` has `writers: ["main"]`. `dev` can read it, and an attempt by `dev` to update or invalidate it is refused.
 
 ### Why explicit shared marker?
 
@@ -293,7 +293,7 @@ All agents' consolidation passes explicitly exclude notes with `agent_id = "shar
 
 1. **Ownership ambiguity** — Shared notes can be written by `main` but consumed by `dev`. If `dev`'s consolidation merges or modifies them, it will violate the `owner` guarantee.
 2. **Stability** — Shared notes serve as stable reference facts. Merging shared notes automatically can corrupt or silently alter information that other agents depend on.
-3. **writers enforcement (future)** — When Story 33 implements `writers` field enforcement, only the `owner` agent will be able to modify shared notes. Until then, this exclusion provides equivalent protection.
+3. **writers enforcement** — Story 33 lets only the agents in `writers` modify a note. This exclusion keeps consolidation from proposing such changes in the first place.
 
 ### What consolidation does with each scope
 
@@ -322,10 +322,8 @@ All agents' consolidation passes explicitly exclude notes with `agent_id = "shar
 | Field | Enforced? | Since | Notes |
 |-------|-----------|-------|-------|
 | `owner` | ✅ Schema | Story 32 | Set at write time, not modifiable |
-| `readers` | ✅ Query filter | Story 32 | `agent_id IN [self, "shared"]` filter applied to all searches |
-| `writers` | ❌ Schema only | Story 32 | Stored in Qdrant but not checked at write/update/delete time |
-
-Story 33 will add `writers` enforcement. When Story 33 is implemented, any write/evolve/delete operation against a note will first check that the calling agent appears in the note's `writers` list.
+| `readers` | ✅ Query filter + check | Story 32 | `agent_id IN [self, "shared"]` filter applied to all searches, then each result checked against `readers` in mode A |
+| `writers` | ✅ Checked on write | Story 33 | Every write, evolve or delete checks that the calling agent appears in the note's `writers` list |
 
 ---
 

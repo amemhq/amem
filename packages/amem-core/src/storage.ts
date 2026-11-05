@@ -716,7 +716,14 @@ export function pointToNote(point: { id: string; payload: Record<string, unknown
     low_quality: p.low_quality === true,
     // 32
     owner: (p.owner as string) || (p.agent_id as string) || 'main',
-    readers: Array.isArray(p.readers) ? (p.readers as string[]) : [(p.agent_id as string) || 'main'],
+    // Every write gives a shared note readers ['*']. One with no readers predates the field
+    // or was written by hand, and search already returns it to every agent, so canRead must
+    // agree rather than deny it to everyone.
+    readers: Array.isArray(p.readers)
+      ? (p.readers as string[])
+      : p.agent_id === 'shared'
+        ? ['*']
+        : [(p.agent_id as string) || 'main'],
     writers: Array.isArray(p.writers) ? (p.writers as string[]) : [(p.agent_id as string) || 'main'],
   }
 }
@@ -803,6 +810,16 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     return note && canWrite(note, caller) ? note : null
   }
 
+  /**
+   * Notes `agentId` may read. The query filter already keeps to the caller's and shared
+   * notes, and every write keeps readers in step with agent_id, so this drops nothing
+   * today; it keeps a note whose readers say otherwise from being listed. A mode B
+   * collection is the agent's own, and may hold notes written under another agent_id.
+   */
+  function readable(notes: MemoryNote[], agentId: string): MemoryNote[] {
+    return modeBIsolated ? notes : notes.filter((n) => canRead(n, agentId))
+  }
+
   return {
     async addNote(note: MemoryNote): Promise<void> {
       await ensureCollection(col)
@@ -867,7 +884,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
       }
       if (!result.points.length) return null
-      return pointToNote(result.points[0])
+      return readable([pointToNote(result.points[0])], agentId)[0] ?? null
     },
 
     /**
@@ -948,10 +965,14 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         filter: scopedAgentFilter(agentId, subject),
       })) as Array<{ id: string; score: number; payload: Record<string, unknown>; vector: number[] }>
 
-      const queryResults = result.map((r) => ({
-        note: pointToNote(r),
-        score: r.score,
-      }))
+      const scored = result.map((r) => ({ note: pointToNote(r), score: r.score }))
+      const keep = new Set(
+        readable(
+          scored.map((r) => r.note),
+          agentId
+        )
+      )
+      const queryResults = scored.filter((r) => keep.has(r.note))
 
       if (queryResults.length > 0) {
         const now = new Date().toISOString()
@@ -997,7 +1018,8 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
         points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
       }
-      return result.points.map(pointToNote)
+      const notes = result.points.map(pointToNote)
+      return agentId === undefined ? notes : readable(notes, agentId)
     },
 
     async deleteNote(id: string): Promise<void> {
@@ -1038,7 +1060,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
         points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
       }
-      return result.points.map(pointToNote).filter((n) => n.timestamp.startsWith(datePrefix))
+      return readable(result.points.map(pointToNote), agentId).filter((n) => n.timestamp.startsWith(datePrefix))
     },
 
     async countNotes(agentId?: string): Promise<number> {
