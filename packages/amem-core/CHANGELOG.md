@@ -1,5 +1,51 @@
 # @amemhq/core
 
+## 2.1.6
+
+### Patch Changes
+
+- [#219](https://github.com/amemhq/amem/pull/219) [`07c9ce4`](https://github.com/amemhq/amem/commit/07c9ce4b93bd0fa4b17995a48d6be6e5b81145bb) Thanks [@heichaowo](https://github.com/heichaowo)! - Never read the whole collection for an empty agentId.
+
+  `listNotes()` and `countNotes()` added the agent filter only for a truthy
+  agentId, so `''` sent a scroll with no filter: no agent clause and no
+  `is_active` clause. `searchMemory('')` then BM25-ranked every note in the
+  collection, other agents' private and invalidated notes included, and
+  `consolidateMemories('')` merged other agents' private notes. The vector half
+  always filters. Both now filter whenever agentId is not `undefined`; only
+  `undefined` reads the whole collection.
+
+  The plugin passed `''` through, because `resolveAgentId()` uses `??`.
+  `resolveAgentId()` and `buildScope()` now throw on an empty agentId. An empty
+  `agentId` in the config fails registration. An empty `ctx.agentId` fails that
+  call rather than falling through to the session key, the config or `main`. The
+  manifest gets no `minLength`: OpenClaw treats a plugin config that fails its
+  schema as an invalid config and does not start the gateway at all.
+
+  An empty agentId that an earlier version wrote to the nightly owed file could
+  never settle, so it failed every night. The owed file now drops it on read.
+
+- [#217](https://github.com/amemhq/amem/pull/217) [`f45f59f`](https://github.com/amemhq/amem/commit/f45f59fd71bdb4dfa95dfa9f7df0a3fe2df382e6) Thanks [@heichaowo](https://github.com/heichaowo)! - Refuse a by-id write when the writers check cannot read the note.
+
+  `updateNoteContent()` and `invalidateNote()` read the note with
+  `getNote(id, SYSTEM_ACTOR)` and refused only if the note was found and the
+  caller was not a writer. `getNote()` turns every read error into `null`, so a
+  failed read skipped the check and the write went ahead for any caller. The
+  plugin's CRUD DELETE path calls `invalidateNote()` with no read before it.
+  ClawHub's review reproduced this with mocked storage and has rated the plugin
+  suspicious since 2.1.5. The check dates from Story 33.
+
+  Both writes now read the note through a fetch that does not catch. A failed
+  read throws, and the callers already treat a throw as a failure. A missing note
+  returns false, the same as a caller who is not a writer. `getNote()` itself
+  still returns `null` for a failed read, which is safe for a read.
+
+  A missing note used to make the vector write throw, which stopped whatever came
+  next. Now that it returns false, the callers check it. The nightly merge
+  deletes the pending or shorter note only after the merged text is written, so a
+  note that vanished between the scan and the write no longer takes the other
+  note with it. The add-time dedup inserts a new note instead of returning the id
+  of a note that is gone.
+
 ## 2.1.5
 
 ### Patch Changes
