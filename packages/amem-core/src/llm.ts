@@ -626,18 +626,24 @@ export interface MemoryOperation {
   fact: string
   existingIdx?: number // For UPDATE/DELETE: integer index into existingMemories (guards against hallucination)
   reason?: string
+  /**
+   * Whether the fact is about the speaker (true) or a general fact (false). Only asked for, and
+   * only set, when `opts.speaker` is set. A missing or unrecognised answer counts as about the
+   * speaker, the side that exposes less.
+   */
+  aboutSpeaker?: boolean
 }
 
 export async function llmCrudDecision(
   userText: string,
   assistantText: string,
   existingMemories: Array<{ idx: number; content: string }>,
-  opts: CallOptions = {}
+  opts: CallOptions & { speaker?: boolean } = {}
 ): Promise<MemoryOperation[]> {
   const memoryList =
     existingMemories.length > 0 ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n') : '(none)'
 
-  const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList)
+  const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList, opts.speaker)
 
   try {
     // Story 42: defaults to `fast`. It IS a contradiction judgement, but it runs
@@ -668,6 +674,7 @@ export async function llmCrudDecision(
         action,
         fact: typeof item.fact === 'string' ? item.fact : '',
         reason: typeof item.reason === 'string' ? item.reason : undefined,
+        ...(opts.speaker && { aboutSpeaker: item.about !== 'world' }),
       }
       if (typeof item.existingIdx === 'number') {
         op.existingIdx = item.existingIdx

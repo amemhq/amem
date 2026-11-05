@@ -54,6 +54,9 @@ import {
 } from './nightly.js'
 import {
   resolveAgentId as resolveAgentIdWith,
+  resolveSpeakerKey as resolveSpeakerKeyWith,
+  readIdentityLinks,
+  visibleToSpeaker,
   buildScope as buildScopeWith,
   type AgentCtx,
   type AgentScope,
@@ -146,6 +149,9 @@ function register(api: {
   // tested); these closures bind it to this instance's config + storage factory.
   const resolveAgentId = (ctx?: AgentCtx): string => resolveAgentIdWith(ctx, pluginConfig)
   const buildScope = (rawAgentId: string): AgentScope => buildScopeWith(rawAgentId, pluginConfig, createStorageContext)
+  // One person on two channels gets one speaker key when the operator linked the accounts.
+  const identityLinks = readIdentityLinks((api as unknown as { config?: unknown }).config)
+  const resolveSpeakerKey = (ctx?: AgentCtx) => resolveSpeakerKeyWith(ctx, identityLinks)
 
   // Background tasks (daily consolidation, service lifecycle) have no per-session
   // ctx — they run on the default agent scope (preserves pre-Story-32 behavior).
@@ -267,10 +273,13 @@ function register(api: {
     api.registerTool(
       (ctx: AgentCtx) => {
         const scope = buildScope(resolveAgentId(ctx))
+        const speaker = resolveSpeakerKey(ctx)
         return {
           name: 'memory_search',
           label: 'Memory Search (A-MEM)',
-          description: 'Search long-term memories stored in A-MEM / Qdrant.',
+          description:
+            'Search long-term memories stored in A-MEM / Qdrant.' +
+            (speaker ? ` The current speaker is "${speaker}". Searches default to that subject.` : ''),
           parameters: {
             type: 'object',
             properties: {
@@ -284,7 +293,7 @@ function register(api: {
               subject: {
                 type: 'string',
                 description:
-                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search everything.',
+                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search as the current speaker when there is one, otherwise everything.',
               },
             },
             required: ['query'],
@@ -293,7 +302,10 @@ function register(api: {
             _toolCallId: string,
             params: { query: string; limit?: number; topicsFilter?: string[]; subject?: string }
           ) {
-            const { query, limit = 5, topicsFilter, subject } = params
+            const { query, limit = 5, topicsFilter } = params
+            // An explicit subject wins. Without one, a known speaker sees their own memories
+            // and the world facts, not other people's.
+            const subject = params.subject || speaker
             const start = Date.now()
             // If write-back is off, append the notice so the assistant relays it to
             // the user (a plugin's most user-visible channel). Determined at startup.
@@ -350,10 +362,13 @@ function register(api: {
     api.registerTool(
       (ctx: AgentCtx) => {
         const scope = buildScope(resolveAgentId(ctx))
+        const speaker = resolveSpeakerKey(ctx)
         return {
           name: 'memory_add',
           label: 'Memory Add (A-MEM)',
-          description: 'Save important information into long-term A-MEM memory.',
+          description:
+            'Save important information into long-term A-MEM memory.' +
+            (speaker ? ` The current speaker is "${speaker}". Use that as the subject for memories about them.` : ''),
           parameters: {
             type: 'object',
             properties: {
@@ -533,6 +548,9 @@ function register(api: {
         const scope = buildScope(resolveAgentId(ctx))
         const agentId = scope.agentId
         const storageCtx = scope.storageCtx
+        // Undefined for cron, heartbeat, CLI and group chats: nothing is tagged or scoped then.
+        const speaker = resolveSpeakerKey(ctx)
+        const subjects = speaker ? [speaker] : undefined
         logger.info(
           `openclaw-amem: agent_end hook triggered (agent_id=${agentId}, success=${event.success}, messages=${event.messages?.length ?? 0})`
         )
@@ -585,12 +603,20 @@ function register(api: {
           if (!userText || !shouldProcessTurn(userText)) return
 
           // ── Step 2: 检索 Top5 已有相关记忆 ─────────────────────────────────────────
-          const searchResults = await searchMemory(userText, 5, agentId, { storageCtx })
-          const existingMemories = searchResults.map((r, idx) => ({
-            idx,
-            id: r.id,
-            content: r.content,
-          }))
+          const searchResults = await searchMemory(userText, 5, agentId, {
+            storageCtx,
+            subject: speaker,
+          })
+          // The search also returns notes about nobody, and linked notes the subject filter did
+          // not vet. The model sees, and so may rewrite or delete, only notes that are about
+          // nobody or exactly about the speaker.
+          const existingMemories: Array<{ idx: number; id: string; content: string }> = []
+          for (const r of searchResults) {
+            const n = await storageCtx.getNote(r.id, agentId)
+            if (n && visibleToSpeaker(n.subjects, speaker)) {
+              existingMemories.push({ idx: existingMemories.length, id: r.id, content: r.content })
+            }
+          }
 
           // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
           const { llmCrudDecision } = await import('@amemhq/core')
@@ -598,7 +624,7 @@ function register(api: {
             userText,
             assistantText,
             existingMemories.map((m) => ({ idx: m.idx, content: m.content })),
-            { deadline }
+            { deadline, speaker: !!speaker }
           )
 
           if (!operations || operations.length === 0) return
@@ -612,8 +638,11 @@ function register(api: {
               logger.warn(`openclaw-amem: agent_end out of time, stored ${i} of ${operations.length} operations`)
               break
             }
+            // A general fact stays untagged so everyone can find it. The model's answer
+            // defaults to "about the speaker" when it is missing.
+            const tag = op.aboutSpeaker ? subjects : undefined
             if (op.action === 'NEW') {
-              await addMemory(op.fact, agentId, { storageCtx, deadline })
+              await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
               logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`)
             } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
@@ -628,10 +657,25 @@ function register(api: {
                 // the fact is not lost: it is captured as a new memory instead,
                 // and consolidation can merge it later.
                 const targetNote = await storageCtx.getNote(target.id, agentId)
-                if (!targetNote || !isPlausibleUpdateTarget(newEmbedding, targetNote.embedding, crudUpdateMinSim)) {
-                  await addMemory(op.fact, agentId, { storageCtx, deadline })
+                // Same rule as the candidate list, checked again on the note about to change.
+                if (
+                  !targetNote ||
+                  !visibleToSpeaker(targetNote.subjects, speaker) ||
+                  !isPlausibleUpdateTarget(newEmbedding, targetNote.embedding, crudUpdateMinSim)
+                ) {
+                  await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
                   logger.warn(
                     `openclaw-amem: CRUD UPDATE on ${target.id.slice(0, 8)} looks mis-targeted — stored as a new memory instead`
+                  )
+                  continue
+                }
+                // A fact about the speaker must not be written into an untagged note: it would
+                // stay readable by everyone. Store it tagged and retire the untagged note.
+                if (tag && (targetNote.subjects ?? []).length === 0) {
+                  await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
+                  await storageCtx.invalidateNote(target.id, agentId)
+                  logger.info(
+                    `openclaw-amem: CRUD UPDATE on untagged ${target.id.slice(0, 8)} is about the speaker — stored as a tagged memory instead`
                   )
                   continue
                 }
@@ -652,6 +696,11 @@ function register(api: {
             } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
               if (target) {
+                const targetNote = await storageCtx.getNote(target.id, agentId)
+                if (!targetNote || !visibleToSpeaker(targetNote.subjects, speaker)) {
+                  logger.warn(`openclaw-amem: CRUD DELETE on ${target.id.slice(0, 8)} skipped — not the speaker's note`)
+                  continue
+                }
                 const ok = await storageCtx.invalidateNote(target.id, agentId)
                 if (!ok) {
                   logger.warn(

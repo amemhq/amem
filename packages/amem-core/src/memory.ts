@@ -160,6 +160,16 @@ function defaultCtx(): StorageContext {
   return createStorageContext()
 }
 
+/** Key for a note's subject set, order-insensitive. Notes about different people never share one. */
+function subjectKey(note: { subjects?: string[] }): string {
+  return JSON.stringify([...(note.subjects ?? [])].sort())
+}
+
+/** True when both notes are about exactly the same people (or both about nobody). */
+function sameSubjects(a: { subjects?: string[] }, b: { subjects?: string[] }): boolean {
+  return subjectKey(a) === subjectKey(b)
+}
+
 // ── addMemory ─────────────────────────────────────────────────────────────────
 export async function addMemory(
   content: string,
@@ -197,7 +207,8 @@ export async function addMemory(
   // ── Layer 1: Exact hash dedup (before LLM & embedding, cheapest check) ──────
   const hash = createHash('md5').update(content).digest('hex')
   const existingByHash = await ctx.findByHash(hash, agentId)
-  if (existingByHash) {
+  // A note about someone else with the same text is not a duplicate of this one.
+  if (existingByHash && sameSubjects(existingByHash, { subjects })) {
     console.log(`[add] dedup: exact hash match, skipping (id=${existingByHash.id.slice(0, 8)})`)
     return existingByHash.id
   }
@@ -218,7 +229,11 @@ export async function addMemory(
   const embedding = await encode(fieldsText)
 
   // ── Layer 2: High-similarity vector dedup (UPDATE instead of INSERT) ─────────
-  const topMatch = await ctx.queryByEmbedding(embedding, 1, agentId, 0.0)
+  // Only a note with the same subjects may be folded into: a fact about one person must not
+  // overwrite another's note or land in an untagged one. The search is wider than the old top-1
+  // because the best match overall can belong to someone else.
+  const probe = await ctx.queryByEmbedding(embedding, 5, agentId, 0.0, subjects[0])
+  const topMatch = probe.filter((r) => sameSubjects(r.note, { subjects })).slice(0, 1)
   if (topMatch.length > 0 && topMatch[0].score >= 0.85) {
     // Story 33: the query also returns SHARED notes owned by other agents. Only
     // fold into the match when we may write it; otherwise fall through and insert
@@ -298,6 +313,8 @@ export async function addMemory(
       for (const { note: cand, score } of candidates) {
         if (cand.id === note.id) continue
         if (score < 0.3) continue
+        // Linking leads to evolution, which rewrites the neighbour. Never across people.
+        if (!sameSubjects(cand, note)) continue
         if (!hasTimeFor(deadline)) break
 
         console.log(`  candidate ${cand.id.slice(0, 8)}... sim=${score.toFixed(3)}, asking LLM...`)
@@ -342,6 +359,8 @@ export async function addMemory(
               console.log(`  [evo] skipping ${lid.slice(0, 8)} — not writable by ${logSafe(agentId)}`)
               continue
             }
+            // Evolution rewrites `linked` using the new note. Never across people.
+            if (!sameSubjects(linked, note)) continue
 
             // Gather link contents and IDs — Story 36: `linked` may be a shared
             // note whose links name its owner's private notes. Reading by id
@@ -351,7 +370,7 @@ export async function addMemory(
             for (const llid of linked.links.slice(0, 5)) {
               if (llid === note.id) continue
               const ln = await ctx.getNote(llid, agentId)
-              if (ln) linkedNotes.push({ id: ln.id, content: ln.content })
+              if (ln && sameSubjects(ln, note)) linkedNotes.push({ id: ln.id, content: ln.content })
             }
             linkedNotes.push({ id: note.id, content }) // new note exactly once
 
@@ -393,14 +412,16 @@ export async function addMemory(
             if (shouldStrengthen && suggestedConnections.length > 0) {
               // 1. 双向链接绑定
               for (const targetId of suggestedConnections) {
+                // Story 36: targetId comes from the LLM's suggestedConnections —
+                // an arbitrary id, not something the agent filter vetted.
+                const target = await ctx.getNote(targetId, agentId)
+                // Never link across people, in either direction.
+                if (!target || !sameSubjects(target, note)) continue
                 if (!note.links.includes(targetId)) {
                   note.links.push(targetId)
                   noteChanged = true
                 }
-                // Story 36: targetId comes from the LLM's suggestedConnections —
-                // an arbitrary id, not something the agent filter vetted.
-                const target = await ctx.getNote(targetId, agentId)
-                if (target && !target.links.includes(note.id)) {
+                if (!target.links.includes(note.id)) {
                   // Story 33: strengthen reaches notes via the link neighbourhood,
                   // which can include notes this agent may not write.
                   if (canWrite(target, agentId)) {
@@ -795,6 +816,7 @@ export async function mergeSimilarNotes(
     for (const other of notes) {
       if (other.id === pendingNote.id) continue
       if (other.pending_merge) continue
+      if (!sameSubjects(other, pendingNote)) continue
       if (!other.embedding.length || !pendingNote.embedding.length) continue
       const sim = cosineSimilarity(pendingNote.embedding, other.embedding)
       if (sim > bestSim) {
@@ -893,6 +915,7 @@ export async function mergeSimilarNotes(
     for (let j = i + 1; j < notes.length; j++) {
       if (pendingIds.has(notes[j].id)) continue
       if (!notes[i].embedding.length || !notes[j].embedding.length) continue
+      if (!sameSubjects(notes[i], notes[j])) continue
       const sim = cosineSimilarity(notes[i].embedding, notes[j].embedding)
       if (sim >= 0.8) {
         pairs.push({ i, j, sim })
@@ -968,7 +991,8 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
   const groups = new Map<string, MemoryNote[]>()
   for (const note of allNotes) {
     if (note.note_type === 'knowledge') continue
-    const category = note.category || 'General'
+    // Notes about different people are never merged, so they never share a group.
+    const category = `${note.category || 'General'}${subjectKey(note) === '[]' ? '' : ` ${subjectKey(note)}`}`
     if (!groups.has(category)) {
       groups.set(category, [])
     }
@@ -1192,7 +1216,8 @@ export async function conflictSweep(
 
   const groups = new Map<string, MemoryNote[]>()
   for (const n of notes) {
-    const c = n.category || 'General'
+    // Notes about different people are never compared, so they never share a batch.
+    const c = `${n.category || 'General'}${subjectKey(n) === '[]' ? '' : ` ${subjectKey(n)}`}`
     if (!groups.has(c)) groups.set(c, [])
     groups.get(c)!.push(n)
   }

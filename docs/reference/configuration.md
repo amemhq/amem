@@ -92,10 +92,78 @@ memory_search { query: "mining", subject: "alex" }
 The engine applies scoping in the vector-store query, not after the fact, so it never fetches
 an out-of-scope memory. The engine scopes both retrieval paths — semantic and keyword — together.
 
-::: tip Nothing changes until you use it
+#### The speaker is tagged for you
+
+When a turn comes from an identified person, the plugin builds a speaker key,
+`<channel>:<sender id>`, such as `discord:1234`. The channel is `ctx.channel`, or
+`ctx.messageProvider` if absent, lowercased. The id is
+`ctx.channelContext.sender.id`, or `ctx.senderId` if absent, trimmed but not
+case-folded. Display names are not used. IDs are unique only inside their channel,
+hence the prefix. Tools get a different context from hooks: there the channel is
+`ctx.messageChannel` and the id is `ctx.requesterSenderId`, used when the hook fields
+are absent.
+
+With a speaker key:
+
+- Auto-capture asks the model, per fact, whether it is about the speaker or a general
+  fact. Facts about the speaker get `subjects: [<speaker key>]`. General facts stay
+  untagged. If the answer is missing or unclear, the fact counts as about the speaker.
+- The notes offered to the model for update or delete are only untagged notes and
+  notes tagged for exactly the speaker. A note that also names someone else is never
+  offered. Without a speaker key, only untagged notes are offered. The target is
+  checked again with the same rule before it changes. An update whose target fails the
+  check is stored as a new note (tagged if the fact is about the speaker), and a
+  delete is skipped. An update about the speaker that targets an untagged note is
+  stored as a new tagged note, and the untagged note is invalidated. Tradeoff: if the
+  model misjudges a world fact as about the speaker, the world note is replaced by a
+  note only that speaker sees.
+- `addMemory` folds a new note into an existing one (same text, or similarity of 0.85
+  or more) only when both have the same subjects. Linking, evolution of a linked note
+  and strengthening links also need the same subjects, and no back-link is added to
+  a note with other subjects. The
+  nightly merge, consolidation and conflict passes pair notes only when both have the
+  same subjects.
+- `memory_search` uses the speaker key as `subject` when the model passes none. A
+  `subject` the model passes wins. The tool descriptions name the speaker key so the
+  model can tag and search consistently. `memory_add` is unchanged: no `subjects`
+  means a world fact.
+
+One person can reach the agent from more than one app, and the channel prefix gives
+each app its own key. If you set `session.identityLinks` in the OpenClaw config, for
+example `{ "alice": ["telegram:123", "discord:456"] }`, the plugin uses
+`identity:<name>` as the key for every linked account, with the name trimmed and
+lowercased: `identity:alice`. Matching follows OpenClaw's own rule: case-insensitive,
+and an entry may be a bare id without a channel. The plugin reads the setting when it
+starts, so restart the gateway after you change it. Notes already tagged with a
+channel key are not renamed. No new plugin option is needed. Without links, each
+channel has its own key and its own memories.
+
+Without a speaker key, nothing is tagged or scoped, as before. That covers cron,
+heartbeat and CLI runs, and any turn with no channel or sender id. It also covers
+group chats and rooms: a group turn knows only who sent the last message, so tagging
+would credit one person with what others said. The plugin reads the session key for
+this, because the hook context has no group flag. Keys of the form
+`agent:<id>:<channel>:group:<id>` and `agent:<id>:<channel>:channel:<id>` count as
+groups. A group routed into the main session with `session.groupScope: "main"` has
+a main session key and is not detected: its turns are tagged with the last sender.
+
+::: warning Subjects are not access control
+Scoping separates memories for retrieval. It does not stop a model from passing another
+person's key as `subject`, or add a note with another person's key in `memory_add`
+`subjects`, which folds into that person's note when the text is close. A note without
+subjects is visible to everyone. `manager.search` of the memory capability, which host
+consumers such as memory-wiki call, passes no subject and searches every note. OpenClaw
+itself does not treat a session as a security boundary. Notes captured before this
+behaviour are untagged and stay visible to everyone.
+:::
+
+::: tip What stays the same
 `subjects` defaults to empty, so every memory written before this existed is a
-world fact and stays visible exactly as before. Omit `subject` on a search and
-you get today's behaviour.
+world fact. Untagged notes stay visible whether or not you pass `subject`. With no
+speaker key (cron, heartbeat, CLI, group chats), omitting `subject` on a search
+works as before and searches everything, including notes tagged for one person in a
+direct chat. Capture in the same turns sees only untagged notes. In a direct chat, omitting `subject`
+searches as the speaker.
 :::
 
 ### Contradiction sweep

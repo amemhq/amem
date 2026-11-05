@@ -18,7 +18,11 @@
 export type PromptLocale = 'en' | 'zh'
 
 export interface LocalePrompts {
-  crudDecision: (userText: string, assistantText: string, memoryList: string) => string
+  /**
+   * `speaker`: the turn comes from one identified person, so each operation also says whether
+   * its fact is about that person ("speaker") or a general fact ("world").
+   */
+  crudDecision: (userText: string, assistantText: string, memoryList: string, speaker?: boolean) => string
   shouldMerge: (contentA: string, contentB: string) => string
   evolutionJudge: (oldContent: string, newContent: string) => string
   /** Story 43: scan a BATCH of notes for mutually contradictory pairs. */
@@ -35,7 +39,8 @@ const en: LocalePrompts = {
   crudDecision: (
     userText,
     assistantText,
-    memoryList
+    memoryList,
+    speaker
   ) => `You are a memory management agent. Analyze the conversation and decide what memory operations are needed.
 
 ## Conversation
@@ -74,7 +79,19 @@ Examples:
 [{"action": "UPDATE", "fact": "User decided to use React (dropped Vue)", "existingIdx": 0, "reason": "Decision finalized, update evaluation status"}]
 
 3. Conversation is just "Sure, thanks" / "Got it" with no new info:
-[]`,
+[]${
+    speaker
+      ? `
+
+## Whose fact
+
+The user is one identified person. Add "about" to every operation:
+- "speaker": the fact is about the user (their preferences, plans, history, situation)
+- "world": a general fact that is true whoever asks (how a tool works, a public fact, project state)
+If unsure, use "speaker".
+Example: {"action": "NEW", "fact": "User prefers TypeScript", "about": "speaker"}`
+      : ''
+  }`,
 
   shouldMerge: (
     contentA,
@@ -164,7 +181,12 @@ Use the numbers shown. Report a pair once. Prefer returning nothing over guessin
 // ── Chinese templates ────────────────────────────────────────────────────────
 
 const zh: LocalePrompts = {
-  crudDecision: (userText, assistantText, memoryList) => `你是一个记忆管理 agent，负责分析对话内容并决定如何操作记忆库。
+  crudDecision: (
+    userText,
+    assistantText,
+    memoryList,
+    speaker
+  ) => `你是一个记忆管理 agent，负责分析对话内容并决定如何操作记忆库。
 
 ## 对话内容
 
@@ -202,7 +224,19 @@ ${memoryList}
 [{"action": "UPDATE", "fact": "用户决定使用 React（放弃了 Vue）", "existingIdx": 0, "reason": "决策已明确，更新评估状态"}]
 
 3. 对话仅为"好的，谢谢"/"没问题"等确认语，无新信息：
-[]`,
+[]${
+    speaker
+      ? `
+
+## 事实属于谁
+
+用户是一位确定的发言人。每条操作都要加 "about"：
+- "speaker"：事实是关于用户本人的（偏好、计划、经历、处境）
+- "world"：谁问都成立的公共事实（工具怎么用、公开信息、项目状态）
+拿不准时填 "speaker"。
+示例：{"action": "NEW", "fact": "用户偏好 TypeScript", "about": "speaker"}`
+      : ''
+  }`,
 
   shouldMerge: (contentA, contentB) => `你是一个记忆去重助手，负责判断两条记忆是否表达了本质相同的信息。
 
