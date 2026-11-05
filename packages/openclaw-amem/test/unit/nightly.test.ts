@@ -198,6 +198,18 @@ describe('owed agents', () => {
     expect([...readOwed(file).keys()]).toEqual(['main'])
   })
 
+  it('drops an empty agentId that a version before 2.1.8 owed, at the next write', () => {
+    // It can no longer be merged: buildScope('') throws, so it would fail every night.
+    const file = freshFile()
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const entry = { from: '2026-10-01T00:00:00.000Z', wrote: '2026-10-01T00:00:00.000Z' }
+    fs.writeFileSync(file, JSON.stringify({ agents: { '': entry, main: entry } }))
+
+    expect([...readOwed(file).keys()]).toEqual(['main'])
+    settleAgent(file, 'main', new Date('2026-11-05T02:30:00Z'))
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).agents).toEqual({})
+  })
+
   it('settles one agent at a time, and keeps one that wrote after the run began, from then', () => {
     const file = freshFile()
     const startedAt = new Date('2026-09-25T18:30:00Z')
