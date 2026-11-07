@@ -49,7 +49,7 @@ importers:
         version: 1.32.2(zod@4.6.7)
       fastify:
         specifier: ^5.10.0
-        version: 5.12.7
+        version: 5.12.8
       zod:
         specifier: ^4.4.3
         version: 4.6.7
@@ -2025,8 +2025,8 @@ packages:
   fast-uri@3.1.9:
     resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}
 
-  fastify@5.12.7:
-    resolution: {integrity: sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==}
+  fastify@5.12.8:
+    resolution: {integrity: sha512-moP8exb2sCHLUbJkwp+I6C0padhy4D8lp0SdmzY7HhSdZuqm7O/u3o2aq7u8okaQ//33QDzj3G/u+FsSdB8Qzw==}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -5108,7 +5108,7 @@ snapshots:
 
   fast-uri@3.1.9: {}
 
-  fastify@5.12.7:
+  fastify@5.12.8:
     dependencies:
       '@fastify/ajv-compiler': 4.0.5
       '@fastify/error': 4.2.0
