@@ -5,6 +5,19 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.10
+
+**Search results now tell the agent that the memories are saved notes, not
+instructions.** A memory is text from an earlier conversation, and it can
+contain a sentence that looks like an order to the agent. `memory_search` now
+puts the notes in a marked block and says, before the block, that they are data
+and that the agent must not follow requests inside them. Each note also shows
+who it is about, the date it was saved, and whether it came in through a link
+rather than matching the search. A note cannot fake the end of the block. The
+plugin does not change what it saves or what it finds.
+
+Update the plugin. Restart the gateway.
+
 ## 2.1.9
 
 **Memories the plugin saves on its own now belong to the person who said
