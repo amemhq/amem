@@ -22,22 +22,32 @@ A memory that names several people is left alone. Merging and linking of similar
 memories, including the nightly pass, now keep memories about different people
 apart. A memory search that names no person also defaults to the speaker.
 
+**In a group chat, a search that names no person finds only general
+memories.** The plugin cannot tell who is asking in a group, so it no longer
+returns memories that people marked as theirs in direct chats. This covers the
+search tool, the search that the plugin runs before it saves facts, and the
+search that OpenClaw tools such as the memory wiki run when they pass the
+session. Scheduled jobs, heartbeats and command-line runs still search
+everything.
+
 **If you talk to the agent from more than one app, link your accounts in
 OpenClaw's identityLinks so it knows they are you.** Without links, each app
 counts as a different person with its own memories. With links, the plugin
 marks memories with the name from identityLinks, for example `identity:alice`.
 Memories that were marked before you added the links keep their old mark.
 
-This is separation, not a lock. The agent can still search for or add to
-another person's memories if it names them. A search that names no person sees
-everyone's memories in group chats and in runs with no sender. Memory tools that
-OpenClaw itself calls, such as the memory wiki, are not limited to the speaker.
-If the plugin is unsure whether a new fact replaces a general memory, and the
-fact is about the speaker, the general memory is removed and the fact is kept
-for that speaker only. Group chats and runs with no sender, such as scheduled
-jobs, are not marked. A group that you set to share the main session
-is not recognised as a group, so it is marked by whoever spoke last. Memories
-saved before this version stay unmarked and visible to everyone.
+This is separation, not a lock. The agent can still search for or add to another
+person's memories if it names them. A search that names no person sees
+everyone's memories in runs with no sender, such as scheduled jobs. Memory tools
+that OpenClaw itself calls, such as the memory wiki, see everyone's memories in
+direct chats, and only general memories in a group if OpenClaw passes the
+session. They do not search as the speaker. If the plugin is unsure whether a
+new fact replaces a general memory, and the fact is about the speaker, the
+general memory is removed and the fact is kept for that speaker only. Group
+chats and runs with no sender, such as scheduled jobs, are not marked. A group
+that you set to share the main session is not recognised as a group, so it is
+marked by whoever spoke last. Memories saved before this version stay unmarked
+and visible to everyone.
 
 **Quality reports go to their own folder and never replace a file.** The
 `memory_quality_scan` tool writes a report of memories that need a look. It

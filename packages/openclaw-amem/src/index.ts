@@ -57,6 +57,7 @@ import {
   resolveSpeakerKey as resolveSpeakerKeyWith,
   readIdentityLinks,
   visibleToSpeaker,
+  isGroupSession,
   buildScope as buildScopeWith,
   type AgentCtx,
   type AgentScope,
@@ -222,7 +223,11 @@ function register(api: {
                 async search(query: string, opts: { limit?: number; topK?: number } = {}) {
                   try {
                     const topK = opts.limit || opts.topK || 5
-                    const results = await searchMemory(query, topK, scope.agentId, { storageCtx: scope.storageCtx })
+                    // A group has no single speaker; see the memory_search tool.
+                    const results = await searchMemory(query, topK, scope.agentId, {
+                      storageCtx: scope.storageCtx,
+                      worldOnly: isGroupSession(params?.sessionKey),
+                    })
                     return results.map((r) => ({
                       id: r.id,
                       memory: r.content,
@@ -274,6 +279,9 @@ function register(api: {
       (ctx: AgentCtx) => {
         const scope = buildScope(resolveAgentId(ctx))
         const speaker = resolveSpeakerKey(ctx)
+        // In a group the speaker is unknown and other people's notes may be in the store, so a
+        // search with no subject sees only notes about nobody.
+        const worldOnly = isGroupSession(ctx?.sessionKey)
         return {
           name: 'memory_search',
           label: 'Memory Search (A-MEM)',
@@ -293,7 +301,7 @@ function register(api: {
               subject: {
                 type: 'string',
                 description:
-                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search as the current speaker when there is one, otherwise everything.',
+                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search as the current speaker in a direct chat, only memories about nobody in a group, and everything otherwise.',
               },
             },
             required: ['query'],
@@ -314,6 +322,7 @@ function register(api: {
               const results = await searchMemory(query, limit, scope.agentId, {
                 topicsFilter,
                 subject,
+                worldOnly,
                 storageCtx: scope.storageCtx,
               })
               logger.info(
@@ -606,6 +615,8 @@ function register(api: {
           const searchResults = await searchMemory(userText, 5, agentId, {
             storageCtx,
             subject: speaker,
+            // Same rule as the memory_search tool; the filter below would drop the rest anyway.
+            worldOnly: isGroupSession(ctx?.sessionKey),
           })
           // The search also returns notes about nobody, and linked notes the subject filter did
           // not vet. The model sees, and so may rewrite or delete, only notes that are about

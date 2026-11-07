@@ -47,6 +47,7 @@ export {
   type StorageContext,
   type MemoryNote,
   type QueryResult,
+  type SubjectScope,
   type EvolutionEntry,
   type AmemPluginConfig,
   type AgentAmemConfig,

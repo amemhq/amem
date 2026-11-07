@@ -127,6 +127,8 @@ With a speaker key:
   `subject` the model passes wins. The tool descriptions name the speaker key so the
   model can tag and search consistently. `memory_add` is unchanged: no `subjects`
   means a world fact.
+- In a group session, a `memory_search` with no `subject` returns only notes with no
+  subjects. See [Group searches](#group-searches).
 
 One person can reach the agent from more than one app, and the channel prefix gives
 each app its own key. If you set `session.identityLinks` in the OpenClaw config, for
@@ -138,7 +140,28 @@ starts, so restart the gateway after you change it. Notes already tagged with a
 channel key are not renamed. No new plugin option is needed. Without links, each
 channel has its own key and its own memories.
 
-Without a speaker key, nothing is tagged or scoped, as before. That covers cron,
+#### Group searches
+
+A group turn has no known speaker, and the store may hold notes that people tagged in
+direct chats. In a group session (the same session-key check as above), a search with
+no `subject` returns only notes with no subjects. The engine option is
+`searchMemory(..., { worldOnly: true })`. It adds an `is_empty` clause on `subjects`
+to the vector-store query, so the vector search and the keyword scroll (BM25 and
+link expansion) both honour it, and `queryByEmbedding` and `listNotes` take
+`{ worldOnly: true }` in place of a subject string. A `subject` the caller passes
+still wins.
+
+The plugin sets it on every read that runs in a group session: the `memory_search`
+tool, `manager.search` of the memory capability (from the `sessionKey` the host
+passes to `getMemorySearchManager`), and the candidate search that auto-capture runs
+before it decides what to save. The plugin has no prompt-injection recall hook.
+Cron, heartbeat and CLI runs have no group session key and are unchanged: an
+unscoped search still sees everything, including notes tagged in direct chats. A
+group routed into the main session with `session.groupScope: "main"` is not
+detected. Notes tagged before a group search was limited are hidden from it too.
+
+Without a speaker key, nothing is tagged and no search defaults to a subject, as
+before. Group searches are the exception above. That covers cron,
 heartbeat and CLI runs, and any turn with no channel or sender id. It also covers
 group chats and rooms: a group turn knows only who sent the last message, so tagging
 would credit one person with what others said. The plugin reads the session key for
@@ -152,7 +175,8 @@ Scoping separates memories for retrieval. It does not stop a model from passing 
 person's key as `subject`, or add a note with another person's key in `memory_add`
 `subjects`, which folds into that person's note when the text is close. A note without
 subjects is visible to everyone. `manager.search` of the memory capability, which host
-consumers such as memory-wiki call, passes no subject and searches every note. OpenClaw
+consumers such as memory-wiki call, passes no subject: it searches only notes without
+subjects in a group session, and every note otherwise. OpenClaw
 itself does not treat a session as a security boundary. Notes captured before this
 behaviour are untagged and stay visible to everyone.
 :::
@@ -160,10 +184,10 @@ behaviour are untagged and stay visible to everyone.
 ::: tip What stays the same
 `subjects` defaults to empty, so every memory written before this existed is a
 world fact. Untagged notes stay visible whether or not you pass `subject`. With no
-speaker key (cron, heartbeat, CLI, group chats), omitting `subject` on a search
-works as before and searches everything, including notes tagged for one person in a
-direct chat. Capture in the same turns sees only untagged notes. In a direct chat, omitting `subject`
-searches as the speaker.
+speaker key, omitting `subject` on a search works as before and searches everything,
+including notes tagged for one person in a direct chat, except in a group session,
+where it searches only untagged notes. Capture in the same turns sees only untagged
+notes. In a direct chat, omitting `subject` searches as the speaker.
 :::
 
 ### Contradiction sweep

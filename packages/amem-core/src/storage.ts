@@ -729,7 +729,22 @@ export function pointToNote(point: { id: string; payload: Record<string, unknown
 }
 
 // ── Agent filter ──────────────────────────────────────────────────────────────
-function agentFilter(agentId: string, subject?: string) {
+
+/**
+ * Person scoping for a read. A string is one subject: notes that name it plus notes that name
+ * nobody. `{ worldOnly: true }` is only the notes that name nobody. Omitted is no scoping.
+ */
+export type SubjectScope = string | { worldOnly: true }
+
+/** The Qdrant clause for a subject scope. */
+function subjectClause(scope: SubjectScope) {
+  if (typeof scope === 'string') {
+    return { should: [{ key: 'subjects', match: { value: scope } }, { is_empty: { key: 'subjects' } }] }
+  }
+  return { is_empty: { key: 'subjects' } }
+}
+
+function agentFilter(agentId: string, subject?: SubjectScope) {
   const must: unknown[] = [
     {
       should: [
@@ -746,11 +761,7 @@ function agentFilter(agentId: string, subject?: string) {
   //
   // Omitting `subject` means "no person scoping", which is what every existing
   // caller does and what keeps behaviour unchanged.
-  if (subject !== undefined) {
-    must.push({
-      should: [{ key: 'subjects', match: { value: subject } }, { is_empty: { key: 'subjects' } }],
-    })
-  }
+  if (subject !== undefined) must.push(subjectClause(subject))
 
   return {
     must,
@@ -769,18 +780,14 @@ function agentFilter(agentId: string, subject?: string) {
 function makeCrud(collectionName: string, modeBIsolated = false) {
   const col = collectionName
 
-  function scopedAgentFilter(agentId: string, subject?: string) {
+  function scopedAgentFilter(agentId: string, subject?: SubjectScope) {
     if (modeBIsolated) {
       // Mode B: the collection is already agent-isolated, so no agent clause is
       // needed — but subject scoping still applies. Mode B separates AGENTS;
       // `subjects` separates the PEOPLE one agent holds memories about, and a
       // single agent in its own collection still meets several of them.
       const must: unknown[] = []
-      if (subject !== undefined) {
-        must.push({
-          should: [{ key: 'subjects', match: { value: subject } }, { is_empty: { key: 'subjects' } }],
-        })
-      }
+      if (subject !== undefined) must.push(subjectClause(subject))
       return {
         ...(must.length > 0 && { must }),
         must_not: [{ key: 'is_active', match: { value: false } }],
@@ -953,7 +960,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       topK: number,
       agentId: string,
       scoreThreshold = 0.0,
-      subject?: string
+      subject?: SubjectScope
     ): Promise<QueryResult[]> {
       await ensureCollection(col)
       const result = (await qdrant('POST', `/collections/${col}/points/search`, {
@@ -1004,7 +1011,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       return queryResults
     },
 
-    async listNotes(agentId?: string, subject?: string): Promise<MemoryNote[]> {
+    async listNotes(agentId?: string, subject?: SubjectScope): Promise<MemoryNote[]> {
       await ensureCollection(col)
       const body: Record<string, unknown> = {
         with_payload: true,
@@ -1150,12 +1157,12 @@ export async function queryByEmbedding(
   topK: number,
   agentId: string,
   scoreThreshold = 0.0,
-  subject?: string
+  subject?: SubjectScope
 ): Promise<QueryResult[]> {
   return makeCrud(getCollection()).queryByEmbedding(embedding, topK, agentId, scoreThreshold, subject)
 }
 
-export async function listNotes(agentId?: string, subject?: string): Promise<MemoryNote[]> {
+export async function listNotes(agentId?: string, subject?: SubjectScope): Promise<MemoryNote[]> {
   return makeCrud(getCollection()).listNotes(agentId, subject)
 }
 

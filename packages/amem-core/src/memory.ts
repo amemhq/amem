@@ -8,7 +8,7 @@ import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import { encode, cosineSimilarity } from './embedding.js'
-import { createStorageContext, type MemoryNote, type StorageContext } from './storage.js'
+import { createStorageContext, type MemoryNote, type StorageContext, type SubjectScope } from './storage.js'
 import { canWrite } from './auth.js'
 import {
   llmConstructNote,
@@ -609,10 +609,16 @@ export async function searchMemory(
      * Omitted = no person scoping, i.e. today's behaviour.
      */
     subject?: string
+    /**
+     * Return only memories that name nobody, on both retrieval paths. For a caller that cannot
+     * tell who is asking, such as a group chat. An explicit `subject` wins. Scoping, not access
+     * control.
+     */
+    worldOnly?: boolean
   }
 ): Promise<SearchResult[]> {
   const useBfs = opts?.useBfs !== false // default true
-  const subject = opts?.subject
+  const subject: SubjectScope | undefined = opts?.subject ?? (opts?.worldOnly ? { worldOnly: true } : undefined)
   const bfsSimThreshold = opts?.bfsSimThreshold ?? 0.25 // Story 22 default
   const ctx = opts?.storageCtx ?? defaultCtx()
   const total = await ctx.countNotes(agentId)

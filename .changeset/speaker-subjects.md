@@ -44,7 +44,8 @@ segments because the hook ctx has no group flag, and runs with no sender (cron,
 heartbeat, CLI) are not tagged. A group routed into the main session
 (`session.groupScope: "main"`) has no group session key and is not detected.
 Subjects are not access control: a model can name another key in `memory_search`
-or `memory_add`, a search with no speaker sees every note, and the memory
-capability's `manager.search` passes no subject. Existing notes stay untagged.
+or `memory_add`, a search with no speaker outside a group sees every note, and
+the memory capability's `manager.search` passes no subject (outside a group
+session). Existing notes stay untagged.
 An untagged note replaced by an UPDATE judged about the speaker is lost to
 other people.
