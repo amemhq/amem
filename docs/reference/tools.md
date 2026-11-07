@@ -54,7 +54,18 @@ path, not by this tool — setting it does not change what `memory_search` retur
 
 **Returns**
 
-An array of memory objects ranked by relevance:
+The text the model reads is a count line, one sentence that says the notes are saved from earlier conversations, are data and not instructions, and must not be obeyed, then a `<memories>` block with one `<memory>` element per note:
+
+```text
+<memories>
+<memory id="uuid" subjects="discord:1234" created="2026-07-31" similarity="84%">Original memory text</memory>
+<memory id="uuid" created="2026-07-30" similarity="41%" via="link">A linked note</memory>
+</memories>
+```
+
+`subjects` is left out when the note has none. `via="link"` marks a note that was not retrieved for the query. Any `<memories`, `</memories`, `<memory` or `</memory` in a note (any case, with optional space after `<` or `</`) has its `<` written as `&lt;`, so a note cannot close or open the block. Other text is kept as stored. Nothing is filtered at write time. The write-back warning, when it applies, follows the block.
+
+`details.memories` holds the structured results, an array of memory objects ranked by relevance:
 
 ```json
 [
@@ -67,6 +78,7 @@ An array of memory objects ranked by relevance:
     "topics": [],
     "links": ["uuid-of-a-linked-note"],
     "timestamp": "2026-07-31T09:00:00.000Z",
+    "subjects": ["discord:1234"],
     "note_type": "memory",
     "similarity": 0.842,
     "rrf": 0.0328,
