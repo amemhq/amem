@@ -17,7 +17,7 @@ memory_add(text="Your memory content here.")
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `text` | `string` | ✅ | The content to store as a memory. |
-| `subjects` | `string[]` | — | Who this memory is about. Empty means it is about the world or the agent itself and stays visible whoever is present. |
+| `subjects` | `string[]` | — | Who this memory is about. Empty means it is about the world or the agent itself and stays visible whoever is present. In a direct chat only the current speaker key is allowed, and in a group none; anything else returns an error and saves nothing. With no sender (cron, heartbeat, CLI) any value is accepted. |
 
 **What happens internally**
 
@@ -45,7 +45,7 @@ memory_search(query="your search query", limit=5)
 | `query` | `string` | — | Natural language search query. |
 | `limit` | `number` | `5` | Maximum **matches** to return. Link-expanded notes are appended on top of this, up to 8 more. |
 | `topicsFilter` | `string[]` | — | Keep only knowledge notes carrying all of these topics. **Memory notes pass through unfiltered**, so on a store that is mostly episodic this filters almost nothing. |
-| `subject` | `string` | — | Who you are talking to or about. Returns memories that name them plus memories that name nobody. |
+| `subject` | `string` | — | Who the memories are about. Returns memories that name them plus memories that name nobody. In a direct chat only the current speaker key is allowed (the search runs as the speaker when omitted), and in a group none; anything else returns an error and does not search. With no sender (cron, heartbeat, CLI) any value is accepted. |
 
 ::: warning `limit` does not read the `topK` config key
 The tool hardcodes `5`. `topK` in `openclaw.json` is read by the memory-capability

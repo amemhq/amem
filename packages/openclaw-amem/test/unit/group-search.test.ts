@@ -84,12 +84,6 @@ describe('memory_search tool', () => {
     expect(searchMemory.mock.calls[1][3]).toMatchObject({ worldOnly: true })
   })
 
-  it('leaves an explicit subject in place, for the engine to prefer', async () => {
-    await setup().tool('memory_search', group).execute('c', { query: 'q', subject: 'someone' })
-
-    expect(searchMemory.mock.calls[0][3]).toMatchObject({ subject: 'someone' })
-  })
-
   it('does not restrict cron, heartbeat, CLI or a direct chat', async () => {
     const { tool } = setup()
     for (const ctx of [cron, dm, { agentId: 'main' }, undefined]) {
