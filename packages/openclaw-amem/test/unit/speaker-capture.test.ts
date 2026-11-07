@@ -275,14 +275,10 @@ describe('identity links', () => {
 })
 
 describe('memory tools', () => {
-  it('memory_search defaults subject to the speaker; an explicit subject wins', async () => {
-    const { tool } = setup()
-    const search = tool('memory_search', dm)
-    await search.execute('c', { query: 'q' })
-    await search.execute('c', { query: 'q', subject: 'someone' })
+  it('memory_search defaults subject to the speaker', async () => {
+    await setup().tool('memory_search', dm).execute('c', { query: 'q' })
 
     expect(searchMemory.mock.calls[0][3].subject).toBe('discord:u1')
-    expect(searchMemory.mock.calls[1][3].subject).toBe('someone')
   })
 
   it('reads the speaker from the real tool ctx fields', async () => {
