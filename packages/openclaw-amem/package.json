@@ -1,6 +1,6 @@
 {
   "name": "openclaw-amem",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "Catches memories that contradict each other. Notes rewrite themselves as new ones arrive and link into a graph. Memories are kept per agent, and tagged per person in direct chats. Runs on a small model. Requires a local Qdrant. 中文走 jieba 分词，提示词有中文版。",
   "license": "MIT",
   "main": "dist/index.js",

@@ -1,5 +1,94 @@
 # Changelog
 
+## 2.1.9
+
+### Patch Changes
+
+- [#223](https://github.com/amemhq/amem/pull/223) [`998159a`](https://github.com/amemhq/amem/commit/998159a4242abc9111fd456c8c1d41c012c88bed) Thanks [@heichaowo](https://github.com/heichaowo)! - A search with no subject in a group session returns only notes with no subjects.
+
+  The speaker tagging let notes about one person coexist with notes about
+  nobody, but a group has no known speaker, so an unscoped search there returned
+  every person's tagged notes. `searchMemory` takes `worldOnly: true`, and
+  `queryByEmbedding` and `listNotes` take the scope `{ worldOnly: true }` in
+  place of a subject string. The filter is `is_empty` on `subjects` inside the
+  Qdrant query, so the vector search and the keyword scroll (BM25 and link
+  expansion) both honour it, in mode A and mode B. An explicit `subject` wins.
+  `subject` is now typed `SubjectScope`, a string or `{ worldOnly: true }`.
+
+  The plugin sets `worldOnly` when `isGroupSession(sessionKey)` is true, in the
+  `memory_search` tool, the memory capability's `manager.search` (from the
+  `sessionKey` the host passes to `getMemorySearchManager`) and the candidate
+  search in `agent_end`. Cron, heartbeat, CLI and direct chats are unchanged.
+  The group test is the same session-key check as for speaker tagging, so a group
+  routed into the main session (`session.groupScope: "main"`) is not detected.
+  Not access control: a model can still pass any subject. Notes tagged before
+  this version stay hidden from group searches.
+
+- [#221](https://github.com/amemhq/amem/pull/221) [`3301a6a`](https://github.com/amemhq/amem/commit/3301a6ab86276feb88dd94db27842e8c1ebf67a4) Thanks [@heichaowo](https://github.com/heichaowo)! - Write quality review batches only as new `amem-review-*.md` files in a
+  dedicated directory, and check `readers` on list and search results.
+
+  ClawHub's review of 2.1.8 showed that `memory_quality_scan` accepted any bare
+  file name and truncated an existing file, in a directory that defaulted to
+  `process.cwd()`. For a gateway that can be the agent workspace, so a
+  prompt-injected agent with the optional tool allowlisted could replace
+  `AGENTS.md`. The plugin tool now takes no file name. `generateReviewBatch()`
+  accepts only names matching `amem-review-<name>.md`, writes with the `wx` flag,
+  and defaults to `amem-reviews` in the data directory (`~/.openclaw/amem-reviews`
+  in the plugin). `AMEM_REVIEW_DIR` still overrides it, and is now read per call.
+
+  The same review noted that searches filter on `agent_id` and never call
+  `canRead()`. Every write keeps `readers` in step with `agent_id`, so nothing
+  leaked. List and search results in a mode A collection now also drop what
+  `canRead()` denies. A shared note with no `readers` field reads as readable by
+  everyone, matching what search already returned for it.
+
+- [#222](https://github.com/amemhq/amem/pull/222) [`f36dae8`](https://github.com/amemhq/amem/commit/f36dae80c6ad86b3ab23ac5a20a26ce85c34330f) Thanks [@heichaowo](https://github.com/heichaowo)! - Tag auto-captured memories with the speaker and scope the capture search.
+
+  The package described memories as separate per person, but `agent_end` capture
+  never set `subjects`, so every captured note was visible to everyone. Its
+  candidate search was also unscoped: a turn with one person could update or
+  invalidate a note tagged for another.
+
+  With a speaker key (`<channel>:<sender id>`, from `ctx.channel` or
+  `ctx.messageProvider` and `ctx.channelContext.sender.id` or `ctx.senderId`),
+  capture now asks the CRUD model whether each fact is about the speaker or a
+  general fact. `llmCrudDecision` takes `{ speaker: true }` and returns
+  `aboutSpeaker` per operation, `true` when the answer is missing or invalid.
+  Speaker facts get `subjects: [key]`, the candidate search uses `subject: key`,
+  and `memory_search` defaults to it when the model passes no `subject`.
+  `aboutSpeaker` is set only when the speaker question was asked.
+
+  The candidate list for the CRUD model holds only notes with no subjects or
+  exactly `[key]`, and only no-subject notes when there is no key. UPDATE and
+  DELETE check the target again with the same rule. A failing UPDATE is stored
+  with `addMemory` (tagged if about the speaker), a failing DELETE is skipped. An
+  UPDATE about the speaker that hits an untagged note is stored as a tagged note
+  and the untagged note is invalidated.
+
+  If `session.identityLinks` in the OpenClaw config lists the sender, the key is
+  `identity:<name>` (trimmed, lowercased) instead of `<channel>:<id>`, so one
+  person on two channels has one key. The matching copies OpenClaw's resolver:
+  case-insensitive, entries trimmed, a bare id also matches. Read once at register
+  time.
+
+  `addMemory` now folds into or links to a note only when its subjects are
+  equal. Evolution and strengthening skip, and never back-link, a note with other
+  subjects. `mergeSimilarNotes`, `consolidateMemories` and `conflictSweep` pair
+  notes only with equal subjects, so captured notes about different people are
+  not merged back together. Tools receive `messageChannel` and `requesterSenderId`
+  instead of the hook fields, and `resolveSpeakerKey` reads both sets.
+
+  Group chats and rooms, found from the `:group:` and `:channel:` session key
+  segments because the hook ctx has no group flag, and runs with no sender (cron,
+  heartbeat, CLI) are not tagged. A group routed into the main session
+  (`session.groupScope: "main"`) has no group session key and is not detected.
+  Subjects are not access control: a model can name another key in `memory_search`
+  or `memory_add`, a search with no speaker outside a group sees every note, and
+  the memory capability's `manager.search` passes no subject (outside a group
+  session). Existing notes stay untagged.
+  An untagged note replaced by an UPDATE judged about the speaker is lost to
+  other people.
+
 ## 2.1.8
 
 ### Patch Changes
