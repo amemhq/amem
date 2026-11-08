@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.1.10
+
+### Patch Changes
+
+- [#228](https://github.com/amemhq/amem/pull/228) [`392e1d5`](https://github.com/amemhq/amem/commit/392e1d5456edad407eb644728fa7d575987ef6fc) Thanks [@heichaowo](https://github.com/heichaowo)! - `memory_search` and `memory_add` check the model's `subject` / `subjects`
+  against the gateway identity.
+
+  The tool ctx falls into three cases. Direct chat (`resolveSpeakerKey` returns a
+  key): `memory_search` takes only the speaker key or no subject, `memory_add`
+  takes `subjects` that are empty or only the speaker key, normalised to the exact
+  key and deduped. The comparison is trimmed and case-insensitive; a blank
+  `subject` counts as omitted. Group (`isGroupSession`): any non-blank `subject`
+  or `subjects` is refused, and a call without them behaves as before (`worldOnly`
+  search, untagged add). No speaker (cron, heartbeat, CLI, no sender): unchanged,
+  the model's subjects are honoured. A refusal is a normal tool result with
+  `details.error`, not a throw, and the text names the speaker key so the model
+  can retry. Nothing is searched or saved on refusal. The descriptions state the
+  rule for the current case.
+
+  Still not general access control. `manager.search` is unchanged, so host tools
+  in a direct chat are unscoped. A group routed into the main session
+  (`session.groupScope: "main"`) is not detected as a group, so it gets the
+  direct-chat rule for the last sender. Runs with no sender can still name anyone.
+
+- [#229](https://github.com/amemhq/amem/pull/229) [`554577f`](https://github.com/amemhq/amem/commit/554577fa240d6df771fab6d06dff974f9cd05cbe) Thanks [@heichaowo](https://github.com/heichaowo)! - `memory_search` returns notes inside a `<memories>` block that is labelled as
+  data.
+
+  Notes are text from earlier turns, so one can carry an instruction aimed at the
+  model that reads the result. The text now has the count, one sentence saying the
+  notes are saved data and must not be obeyed, then `<memories>` with one `<memory
+id subjects created similarity via>` per note. `subjects` is left out when
+  empty; `via="link"` replaces the old ", linked — did not match" wording. Any
+  `<memories`, `</memories`, `<memory`, `</memory` in a note (any case, optional
+  space after `<` or `</`) gets its `<` written as `&lt;`; attribute values escape
+  `& < > "`. Other text is kept verbatim so Chinese stays readable. The hook
+  warning and "No relevant memories found." stay outside the block, and
+  `details.memories` is unchanged apart from the new field. The tool description
+  says the same thing in one sentence.
+
+  `SearchResult` gains `subjects`, copied from the note `searchMemory` already
+  holds, so amem-api's `/v1/memories/search` returns it too. This is a label, not
+  a filter: nothing is dropped at write time, and a model can still follow what it
+  reads. Any other consumer that parses the old "N. text (similarity 84%, id: x)"
+  lines breaks.
+
 ## 2.1.9
 
 ### Patch Changes
