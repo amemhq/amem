@@ -118,16 +118,25 @@ jobs:
       # so run the binary — same engine, same default ruleset, no wrapper.
       # --redact keeps any match out of the log; the finding's location is enough
       # to act on and the value must never be printed.
+      # Download through the API, not github.com/<repo>/releases/download: on
+      # 2026-11-08 that URL answered 504 in runs of several requests while the
+      # API asset endpoint kept serving, and curl without -f saved the 504 body
+      # as the asset, so the step died at sha256sum without an HTTP status.
       - name: Credential scan (gitleaks)
         env:
           GITLEAKS_VERSION: 8.30.1
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
-          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -sSLO "$base/$tarball"
-          curl -sSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          for attempt in 1 2 3; do
+            if gh release download "v${GITLEAKS_VERSION}" --repo gitleaks/gitleaks --clobber \
+              --pattern "$tarball" --pattern "gitleaks_${GITLEAKS_VERSION}_checksums.txt"; then break; fi
+            if [ "$attempt" = 3 ]; then echo "::error::gitleaks download failed after 3 attempts"; exit 1; fi
+            echo "::warning::gitleaks download failed (attempt $attempt/3); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
           grep " ${tarball}\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
           tar -xzf "$tarball" gitleaks
           cd "$GITHUB_WORKSPACE"
