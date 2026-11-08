@@ -71,6 +71,19 @@ let _config: Record<string, unknown> = {}
 const HOOK_BUDGET_MS = 30_000
 const HOOK_MARGIN_MS = 2_000
 
+// A model can send a lone string where the schema says array; treat it as a one-item list.
+function asList(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : v == null ? [] : [v]
+}
+
+/** A tool result for a call the gateway identity does not allow. Returned, not thrown, like other failures. */
+function refusal(text: string, ok?: boolean) {
+  return {
+    content: [{ type: 'text', text }],
+    details: ok === undefined ? { error: text } : { ok, error: text },
+  }
+}
+
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
   logger: { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void }
@@ -287,7 +300,11 @@ function register(api: {
           label: 'Memory Search (A-MEM)',
           description:
             'Search long-term memories stored in A-MEM / Qdrant.' +
-            (speaker ? ` The current speaker is "${speaker}". Searches default to that subject.` : ''),
+            (speaker
+              ? ` The current speaker is "${speaker}". You can only search memories about "${speaker}" or about nobody in particular. Omit subject.`
+              : worldOnly
+                ? ' This is a group chat. You can only search memories about nobody in particular. Omit subject.'
+                : ''),
           parameters: {
             type: 'object',
             properties: {
@@ -301,7 +318,7 @@ function register(api: {
               subject: {
                 type: 'string',
                 description:
-                  'Who you are talking to or about (e.g. a player name). Returns memories about them plus memories about nobody in particular. Omit to search as the current speaker in a direct chat, only memories about nobody in a group, and everything otherwise.',
+                  'Who the memories are about (e.g. a player name). Returns memories about them plus memories about nobody in particular. In a direct chat only the current speaker is allowed, and in a group none; omit it there. Omit to search everything when there is no sender (scheduled jobs, heartbeats).',
               },
             },
             required: ['query'],
@@ -311,9 +328,20 @@ function register(api: {
             params: { query: string; limit?: number; topicsFilter?: string[]; subject?: string }
           ) {
             const { query, limit = 5, topicsFilter } = params
-            // An explicit subject wins. Without one, a known speaker sees their own memories
-            // and the world facts, not other people's.
-            const subject = params.subject || speaker
+            // The gateway identity bounds what the model may ask for: in a direct chat only the
+            // speaker, in a group nobody. With no sender the model's subject is honoured.
+            const asked = String(params.subject ?? '').trim() || undefined
+            if (speaker && asked && asked.toLowerCase() !== speaker.toLowerCase()) {
+              return refusal(
+                `Memory search refused: in this chat you can only search memories about the current speaker "${speaker}" or about nobody in particular. Omit subject and search again.`
+              )
+            }
+            if (worldOnly && asked) {
+              return refusal(
+                'Memory search refused: this is a group chat, so you can only search memories about nobody in particular. Omit subject and search again.'
+              )
+            }
+            const subject = speaker ?? (worldOnly ? undefined : params.subject || undefined)
             const start = Date.now()
             // If write-back is off, append the notice so the assistant relays it to
             // the user (a plugin's most user-visible channel). Determined at startup.
@@ -372,12 +400,17 @@ function register(api: {
       (ctx: AgentCtx) => {
         const scope = buildScope(resolveAgentId(ctx))
         const speaker = resolveSpeakerKey(ctx)
+        const inGroup = isGroupSession(ctx?.sessionKey)
         return {
           name: 'memory_add',
           label: 'Memory Add (A-MEM)',
           description:
             'Save important information into long-term A-MEM memory.' +
-            (speaker ? ` The current speaker is "${speaker}". Use that as the subject for memories about them.` : ''),
+            (speaker
+              ? ` The current speaker is "${speaker}". subjects may only be empty or ["${speaker}"].`
+              : inGroup
+                ? ' This is a group chat. subjects must be empty.'
+                : ''),
           parameters: {
             type: 'object',
             properties: {
@@ -386,13 +419,34 @@ function register(api: {
                 type: 'array',
                 items: { type: 'string' },
                 description:
-                  'Who this memory is about (e.g. player names). Use several for a shared experience — it will surface for each of them. Leave empty for a fact about the world or about yourself.',
+                  'Who this memory is about (e.g. player names). Use several for a shared experience — it will surface for each of them. Leave empty for a fact about the world or about yourself. In a direct chat only the current speaker is allowed, and in a group none.',
               },
             },
             required: ['text'],
           },
           async execute(_toolCallId: string, params: { text: string; subjects?: string[] }) {
-            const { text, subjects } = params
+            const { text } = params
+            let subjects = params.subjects
+            if (speaker) {
+              const named = asList(subjects)
+                .map((x) => String(x).trim())
+                .filter(Boolean)
+              if (named.some((x) => x.toLowerCase() !== speaker.toLowerCase())) {
+                return refusal(
+                  `Memory add refused: in this chat subjects may only be empty or ["${speaker}"], the current speaker. Nothing was saved. Save it again with that subject, or with none.`,
+                  false
+                )
+              }
+              subjects = named.length ? [speaker] : undefined
+            } else if (inGroup) {
+              if (asList(subjects).some((x) => String(x).trim())) {
+                return refusal(
+                  'Memory add refused: this is a group chat, so subjects must be empty. Nothing was saved. Save it again without subjects.',
+                  false
+                )
+              }
+              subjects = undefined
+            }
             const start = Date.now()
             try {
               const id = await addMemory(text, scope.agentId, { subjects, storageCtx: scope.storageCtx })

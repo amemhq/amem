@@ -5,6 +5,24 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.10
+
+**The agent can no longer search or save memories for someone other than the
+person it is talking to.** Before, the agent could name any person in
+`memory_search` or `memory_add` and read or add to that person's memories. In a
+direct chat, the tools now accept only the person who is talking. If the agent
+names someone else, the tool says so and does nothing, and the agent can try
+again. In a group chat, the tools accept no person: a search finds only general
+memories, and a memory is saved as general.
+
+**Scheduled jobs, heartbeats and command-line runs work as before.** They have
+no sender, so the agent can still name any person there. This is not a full
+lock. Memory tools that OpenClaw itself calls, such as the memory wiki, still
+see everyone's memories in direct chats. A group that you set to share the main
+session is not recognised as a group.
+
+Update the plugin. Restart the gateway.
+
 ## 2.1.9
 
 **Memories the plugin saves on its own now belong to the person who said

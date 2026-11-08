@@ -123,12 +123,17 @@ With a speaker key:
   a note with other subjects. The
   nightly merge, consolidation and conflict passes pair notes only when both have the
   same subjects.
-- `memory_search` uses the speaker key as `subject` when the model passes none. A
-  `subject` the model passes wins. The tool descriptions name the speaker key so the
-  model can tag and search consistently. `memory_add` is unchanged: no `subjects`
-  means a world fact.
-- In a group session, a `memory_search` with no `subject` returns only notes with no
-  subjects. See [Group searches](#group-searches).
+- `memory_search` searches as the speaker key. A `subject` that differs from the
+  speaker key (compared trimmed and case-insensitively) makes the tool return an
+  error and search nothing. An empty `subject` counts as omitted. `memory_add`
+  accepts `subjects` that are empty or contain only the speaker key, which is saved
+  as the exact key once. Any other `subjects` returns an error and saves nothing. The
+  tool descriptions name the speaker key and the rule, and the error text names the
+  allowed values so the model can retry.
+- In a group session, a `memory_search` with a `subject` and a `memory_add` with
+  `subjects` return an error and do nothing. Without them, search returns only notes
+  with no subjects and add saves a note with no subjects. See
+  [Group searches](#group-searches).
 
 One person can reach the agent from more than one app, and the channel prefix gives
 each app its own key. If you set `session.identityLinks` in the OpenClaw config, for
@@ -144,12 +149,13 @@ channel has its own key and its own memories.
 
 A group turn has no known speaker, and the store may hold notes that people tagged in
 direct chats. In a group session (the same session-key check as above), a search with
-no `subject` returns only notes with no subjects. The engine option is
-`searchMemory(..., { worldOnly: true })`. It adds an `is_empty` clause on `subjects`
-to the vector-store query, so the vector search and the keyword scroll (BM25 and
-link expansion) both honour it, and `queryByEmbedding` and `listNotes` take
-`{ worldOnly: true }` in place of a subject string. A `subject` the caller passes
-still wins.
+no `subject` returns only notes with no subjects, and the `memory_search` tool refuses
+a `subject`. The engine option is `searchMemory(..., { worldOnly: true })`. It adds an
+`is_empty` clause on `subjects` to the vector-store query, so the vector search and
+the keyword scroll (BM25 and link expansion) both honour it, and `queryByEmbedding`
+and `listNotes` take `{ worldOnly: true }` in place of a subject string. An engine
+caller that passes a `subject` still wins. The plugin's tool never passes one in a
+group.
 
 The plugin sets it on every read that runs in a group session: the `memory_search`
 tool, `manager.search` of the memory capability (from the `sessionKey` the host
@@ -171,12 +177,15 @@ groups. A group routed into the main session with `session.groupScope: "main"` h
 a main session key and is not detected: its turns are tagged with the last sender.
 
 ::: warning Subjects are not access control
-Scoping separates memories for retrieval. It does not stop a model from passing another
-person's key as `subject`, or add a note with another person's key in `memory_add`
-`subjects`, which folds into that person's note when the text is close. A note without
-subjects is visible to everyone. `manager.search` of the memory capability, which host
-consumers such as memory-wiki call, passes no subject: it searches only notes without
-subjects in a group session, and every note otherwise. OpenClaw
+The tools check the subject against the gateway identity: in a direct chat only the
+speaker key is allowed, in a group none. That is the whole check. In runs with no
+sender (cron, heartbeat, CLI) a model can still search for, or add to, any person's
+key, and a note added that way folds into that person's note when the text is close.
+A note without subjects is visible to everyone. `manager.search` of the memory
+capability, which host consumers such as memory-wiki call, passes no subject: it
+searches only notes without subjects in a group session, and every note otherwise,
+so in a direct chat it is unscoped. A group routed into the main session
+(`session.groupScope: "main"`) is not detected as a group. OpenClaw
 itself does not treat a session as a security boundary. Notes captured before this
 behaviour are untagged and stay visible to everyone.
 :::
@@ -187,7 +196,7 @@ world fact. Untagged notes stay visible whether or not you pass `subject`. With 
 speaker key, omitting `subject` on a search works as before and searches everything,
 including notes tagged for one person in a direct chat, except in a group session,
 where it searches only untagged notes. Capture in the same turns sees only untagged
-notes. In a direct chat, omitting `subject` searches as the speaker.
+notes. In a direct chat, a search always runs as the speaker.
 :::
 
 ### Contradiction sweep
