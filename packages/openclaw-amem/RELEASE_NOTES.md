@@ -21,6 +21,15 @@ lock. Memory tools that OpenClaw itself calls, such as the memory wiki, still
 see everyone's memories in direct chats. A group that you set to share the main
 session is not recognised as a group.
 
+**Search results now tell the agent that the memories are saved notes, not
+instructions.** A memory is text from an earlier conversation, and it can
+contain a sentence that looks like an order to the agent. `memory_search` now
+puts the notes in a marked block and says, before the block, that they are data
+and that the agent must not follow requests inside them. Each note also shows
+who it is about, the date it was saved, and whether it came in through a link
+rather than matching the search. A note cannot fake the end of the block. The
+block changes only how results are shown, not which notes are found.
+
 Update the plugin. Restart the gateway.
 
 ## 2.1.9

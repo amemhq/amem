@@ -228,3 +228,17 @@ describe('lexical misses', () => {
     expect(res.find((r) => r.id === 'b')?.via).toBe('match')
   })
 })
+
+describe('result subjects', () => {
+  it("carries each note's subjects, on a match and on a link, and [] when it has none", async () => {
+    const hit = { ...HIT, subjects: ['discord:1', 'identity:alice'] }
+    const neighbour = { ...NEIGHBOUR, subjects: ['discord:2'] }
+    const res = await searchMemory('alpha', TOP_K, 'main', { storageCtx: makeCtx([hit, neighbour], [hit]) })
+
+    expect(res.find((r) => r.id === 'hit')?.subjects).toEqual(['discord:1', 'identity:alice'])
+    expect(res.find((r) => r.id === 'neighbour')?.subjects).toEqual(['discord:2'])
+
+    const bare = await searchMemory('alpha', TOP_K, 'main', { storageCtx: makeCtx([HIT, NEIGHBOUR], [HIT]) })
+    expect(bare.find((r) => r.id === 'hit')?.subjects).toEqual([])
+  })
+})

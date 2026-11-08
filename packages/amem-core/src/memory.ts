@@ -563,6 +563,7 @@ export interface SearchResult {
   keywords: string[]
   links: string[]
   timestamp: string
+  subjects: string[]
   /**
    * Cosine similarity to the query. **Not** what ordered this list — that is
    * `rrf`, which fuses the dense and BM25 rankings and then applies a heat/recency
@@ -758,6 +759,7 @@ export async function searchMemory(
       keywords: note.keywords,
       links: note.links,
       timestamp: note.timestamp,
+      subjects: note.subjects ?? [],
       // Neither map covers a note that got here on BM25 alone: it was never in
       // the dense results, and it was not expanded into. That is a real cosine
       // nobody had measured, not a zero — and reporting 0 made a lexical match
