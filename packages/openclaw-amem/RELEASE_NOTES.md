@@ -15,6 +15,13 @@ only user. Before, these tools could find any person's memories in a direct
 chat. The results also came back in a form that OpenClaw could not read, so the
 memory wiki failed when its search included memories. Both are fixed.
 
+**Combining similar memories at night no longer loses their earlier wording.**
+Every night the plugin combines memories that say nearly the same thing. In some
+cases it threw away the original text of the memories it combined, so a bad
+merge could not be undone. It now keeps that text. A memory folded into another
+is hidden from search, not removed, and the combined memory keeps its earlier
+wording in its history.
+
 Update the plugin. Restart the gateway.
 
 ## 2.1.10
