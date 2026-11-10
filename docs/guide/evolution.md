@@ -10,9 +10,9 @@ When new content falls within the 0.72–0.85 cosine similarity zone with an exi
 
 | Path | When | Action |
 |------|------|--------|
-| **EVOLVE** | New info deepens or updates old memory (e.g. "wants to buy Model 3" → "decided on standard RWD") | Old note content updated, event appended to `evolution_history`, new note absorbed |
+| **EVOLVE** | New info deepens or updates old memory (e.g. "wants to buy Model 3" → "decided on standard RWD") | Old note content updated, event appended to `evolution_history`, new note retired (`is_active: false`) |
 | **CONFLICT** | New and old info contradict each other (e.g. "lives in Riverstone" vs "moved to Eastholm") | Both notes kept, both marked `conflict: true` — preserved for human review |
-| **EXPAND** | New info complements old memory (e.g. "has a sister" + "sister works in finance in Northvale") | Content merged into old note, `evolution_history` appended, new note absorbed |
+| **EXPAND** | New info complements old memory (e.g. "has a sister" + "sister works in finance in Northvale") | Content merged into old note, `evolution_history` appended, new note retired (`is_active: false`) |
 | **NEW** | Unrelated content | Both notes kept as-is, `pending_merge` cleared |
 
 ### Why this matters

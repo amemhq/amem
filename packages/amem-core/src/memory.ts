@@ -8,7 +8,13 @@ import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 import { encode, cosineSimilarity } from './embedding.js'
-import { createStorageContext, type MemoryNote, type StorageContext, type SubjectScope } from './storage.js'
+import {
+  createStorageContext,
+  type EvolutionEntry,
+  type MemoryNote,
+  type StorageContext,
+  type SubjectScope,
+} from './storage.js'
 import { canWrite } from './auth.js'
 import {
   llmConstructNote,
@@ -791,8 +797,26 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * The history to write after `updateNoteContent` changed `note`. That call appends the
+ * replaced text to the stored history, which `history` (read before it) lacks. Read it back
+ * and add the last entry of `history` after it. Writing `history` as it was would drop the
+ * replaced text.
+ */
+async function historyAfterUpdate(
+  ctx: StorageContext,
+  note: MemoryNote,
+  agentId: string,
+  history: EvolutionEntry[]
+): Promise<EvolutionEntry[]> {
+  const entry = history[history.length - 1]
+  const fresh = await ctx.getNote(note.id, agentId)
+  if (fresh) return [...fresh.evolution_history, entry]
+  return [...history.slice(0, -1), { ...entry, oldContent: note.content }]
+}
+
+/**
  * Merge semantically similar notes written on one UTC day, today by default.
- * Returns the number of notes merged (deleted).
+ * Returns the number of notes merged (retired, so their text stays recoverable).
  *
  * `date` is "YYYY-MM-DD" and is matched against the note's UTC timestamp. A host that
  * runs this after local midnight has to pass the previous UTC day as well, or the notes
@@ -860,14 +884,17 @@ export async function mergeSimilarNotes(
       const mergedContent = judgment.mergedContent || pendingNote.content
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      // The pending note is deleted only once the merge is written; otherwise it stays
+      // The pending note is retired only once the merge is written; otherwise it stays
       // pending for the next run.
       if (await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)) {
         await ctx.patchNotePayload(bestNeighbor.id, {
-          evolution_history: JSON.stringify(oldHistory),
+          evolution_history: JSON.stringify(await historyAfterUpdate(ctx, bestNeighbor, agentId, oldHistory)),
           evolution_type: 'EVOLVE',
         })
-        await ctx.deleteNote(pendingNote.id)
+        await ctx.invalidateNote(pendingNote.id, agentId)
+        // getNote returns retired notes, so a link left here would feed this text back into
+        // the write-time evolution of every note linked to it.
+        await ctx.replaceLinkReferences(pendingNote.id, bestNeighbor.id, agentId)
         evolvedCount++
       }
     } else if (judgment.type === 'CONFLICT') {
@@ -889,10 +916,13 @@ export async function mergeSimilarNotes(
       const newHash = createHash('md5').update(mergedContent).digest('hex')
       if (await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash, agentId)) {
         await ctx.patchNotePayload(bestNeighbor.id, {
-          evolution_history: JSON.stringify(oldHistory),
+          evolution_history: JSON.stringify(await historyAfterUpdate(ctx, bestNeighbor, agentId, oldHistory)),
           evolution_type: 'EXPAND',
         })
-        await ctx.deleteNote(pendingNote.id)
+        await ctx.invalidateNote(pendingNote.id, agentId)
+        // getNote returns retired notes, so a link left here would feed this text back into
+        // the write-time evolution of every note linked to it.
+        await ctx.replaceLinkReferences(pendingNote.id, bestNeighbor.id, agentId)
         evolvedCount++
       }
     } else {
@@ -956,9 +986,10 @@ export async function mergeSimilarNotes(
 
       const newEmbedding = await encode(result.merged)
       const newHash = createHash('md5').update(result.merged).digest('hex')
-      // Drop the other note only once the merged text is written, or both are lost.
+      // Retire the other note only once the merged text is written, or both are lost.
       if (await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash, agentId)) {
-        await ctx.deleteNote(dropNote.id)
+        await ctx.invalidateNote(dropNote.id, agentId)
+        await ctx.replaceLinkReferences(dropNote.id, keepNote.id, agentId)
         deletedIds.add(dropNote.id)
         mergedCount++
       }
@@ -1084,6 +1115,7 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
 
       const oldContext = keepNote.context
       const oldTags = [...keepNote.tags]
+      const oldContent = keepNote.content
 
       // 内容更新
       keepNote.content = mergeDecision.merged
@@ -1124,6 +1156,8 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
         oldTags,
         newTags: keepNote.tags,
         action: 'consolidate',
+        // updateNote below overwrites the whole point, so this is the only copy left.
+        oldContent,
       })
 
       // 更新 KeepNote

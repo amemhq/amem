@@ -144,7 +144,7 @@ describe('a stopped step leaves the notes as they were', () => {
       getNotesByDatePrefix: vi.fn(async () => [note('p', { pending_merge: true }), note('q')]),
       patchNotePayload: vi.fn(async () => {}),
       updateNoteContent: vi.fn(async () => {}),
-      deleteNote: vi.fn(async () => {}),
+      invalidateNote: vi.fn(async () => true),
     }
 
     const job = runInBackground(
@@ -154,7 +154,7 @@ describe('a stopped step leaves the notes as they were', () => {
 
     await expect(job).rejects.toBeInstanceOf(BackgroundPreempted)
     expect(ctx.patchNotePayload).not.toHaveBeenCalled()
-    expect(ctx.deleteNote).not.toHaveBeenCalled()
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
   })
 
   it('does not clear pending_merge on a note with no neighbour once the host is busy', async () => {
@@ -187,7 +187,7 @@ describe('a stopped step leaves the notes as they were', () => {
       getNotesByDatePrefix: vi.fn(async () => [note('p', { pending_merge: true }), note('q')]),
       patchNotePayload: vi.fn(async () => {}),
       updateNoteContent: vi.fn(async () => {}),
-      deleteNote: vi.fn(async () => {}),
+      invalidateNote: vi.fn(async () => true),
     }
 
     const job = runInBackground(
@@ -198,7 +198,7 @@ describe('a stopped step leaves the notes as they were', () => {
     await expect(job).rejects.toBeInstanceOf(BackgroundPreempted)
     expect(anthropicCreate).toHaveBeenCalledTimes(1)
     expect(ctx.updateNoteContent).not.toHaveBeenCalled()
-    expect(ctx.deleteNote).not.toHaveBeenCalled()
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
   })
 
   it('stops consolidation inside the similarity loop, which blocks the event loop', async () => {

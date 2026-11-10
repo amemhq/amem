@@ -1,7 +1,7 @@
 /**
- * The nightly merge deletes a note only after the text merged out of it is written. A write
+ * The nightly merge retires a note only after the text merged out of it is written. A write
  * the store refuses, because the target note is gone or not the caller's, must not be
- * followed by the delete, or both notes are lost. Synthetic notes and a mock context only.
+ * followed by the retirement, or both notes are lost. Synthetic notes and a mock context only.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -58,9 +58,11 @@ function makeCtx(notes: MemoryNote[], updated: boolean) {
     getNotesByDatePrefix: vi.fn(async () => notes),
     updateNoteContent: vi.fn(async () => updated),
     patchNotePayload: vi.fn(async () => {}),
-    deleteNote: vi.fn(async () => {}),
+    getNote: vi.fn(async () => null),
+    invalidateNote: vi.fn(async () => true),
+    replaceLinkReferences: vi.fn(async () => {}),
   } as unknown as StorageContext &
-    Record<'updateNoteContent' | 'patchNotePayload' | 'deleteNote', ReturnType<typeof vi.fn>>
+    Record<'updateNoteContent' | 'patchNotePayload' | 'invalidateNote', ReturnType<typeof vi.fn>>
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -68,16 +70,16 @@ beforeEach(() => vi.clearAllMocks())
 describe('a pending note merged into its neighbour', () => {
   const notes = () => [note('pending', [1, 0], { pending_merge: true }), note('neighbour', [1, 0])]
 
-  it('is deleted once the merged text is written', async () => {
+  it('is retired once the merged text is written', async () => {
     const ctx = makeCtx(notes(), true)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
-    expect(ctx.deleteNote).toHaveBeenCalledWith('pending')
+    expect(ctx.invalidateNote).toHaveBeenCalledWith('pending', 'main')
   })
 
   it('stays when the write is refused', async () => {
     const ctx = makeCtx(notes(), false)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
-    expect(ctx.deleteNote).not.toHaveBeenCalled()
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
     expect(ctx.patchNotePayload).not.toHaveBeenCalled()
   })
 })
@@ -91,16 +93,16 @@ describe('the shorter of two similar notes', () => {
     note('e', [0, 3]),
   ]
 
-  it('is deleted once the merged text is written into the longer one', async () => {
+  it('is retired once the merged text is written into the longer one', async () => {
     const ctx = makeCtx(notes(), true)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
     expect(ctx.updateNoteContent).toHaveBeenCalledWith('a', 'merged text', [1, 0], expect.any(String), 'main')
-    expect(ctx.deleteNote).toHaveBeenCalledWith('b')
+    expect(ctx.invalidateNote).toHaveBeenCalledWith('b', 'main')
   })
 
   it('stays when the write is refused', async () => {
     const ctx = makeCtx(notes(), false)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
-    expect(ctx.deleteNote).not.toHaveBeenCalled()
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
   })
 })
