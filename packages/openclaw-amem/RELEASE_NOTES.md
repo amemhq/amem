@@ -5,7 +5,7 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
-## 2.1.11
+## 2.2.0
 
 **Memory tools that OpenClaw itself calls now see only general memories.**
 OpenClaw's own tools, such as the memory wiki, search your memories through a
