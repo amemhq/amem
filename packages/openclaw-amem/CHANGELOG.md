@@ -1,5 +1,74 @@
 # Changelog
 
+## 2.2.0
+
+### Minor Changes
+
+- [#236](https://github.com/amemhq/amem/pull/236) [`4c12f19`](https://github.com/amemhq/amem/commit/4c12f1991af062925f1ea06b927b61db429c7c84) Thanks [@heichaowo](https://github.com/heichaowo)! - agent_end now rewrites a note only with authority from outside the model, and
+  retires none unless crudRetire is auto. UPDATE, and the 0.85 fold inside
+  addMemory (new `rewriteExisting` option), apply only when the host-minted
+  ctx.memoryAudience is owner-private and ctx.trigger is user or absent: the host
+  also mints owner-private for a heartbeat on the owner's main session. Other
+  turns, and turns without an audience, are add-only. The host mints the audience
+  only for a native memory provider, so the plugin now also registers a minimal
+  providerRuntime (search and get over notes about nobody, same as
+  manager.search). Gateway memory.search v1 errors for a native provider and needs
+  version: 2. Only the audience kind is read: the hook runs after the turn
+  released the audience, so assertMemoryAudienceCurrent throws there.
+
+  New `crudRetire` (off | auto, default off) governs DELETE and the retag path.
+  invalidateNote takes an optional retiring path and reason and records
+  retired_at, retired_by and retire_reason; every engine caller passes them. New
+  restoreNote, listRetired and revertNote, exposed as `openclaw amem retired`,
+  `restore` and `revert` through registerCli and manifest cliCommands. restoreNote
+  clears pending_merge, which the nightly EVOLVE/EXPAND path leaves set, and
+  records restored_at; conflictSweep in auto mode marks a restored note but does
+  not retire it again.
+
+  llmCall takes an optional system message. All seven internal prompts send their
+  rules there and the conversation or note text as an escaped data block in the
+  user message. The escaping moved from format-memories.ts to core.
+
+### Patch Changes
+
+- [#234](https://github.com/amemhq/amem/pull/234) [`b21f7e2`](https://github.com/amemhq/amem/commit/b21f7e242a95ffa68d8ae92bd97226665aa70ba6) Thanks [@heichaowo](https://github.com/heichaowo)! - The nightly merge and consolidation no longer lose the text they replace.
+
+  In `mergeSimilarNotes`, EVOLVE and EXPAND wrote `evolution_history` from a copy
+  read before `updateNoteContent`, which overwrote the `crud_update` entry holding
+  the neighbour's previous content. They now read the note back after the update
+  and append the `consolidate` entry to what is stored. If the read returns
+  nothing, the entry carries `oldContent` itself.
+
+  `consolidateMemories` wrote its `consolidate` entry without `oldContent` and
+  then replaced the whole point with `updateNote`. The entry now carries the keep
+  note's previous content.
+
+  The three `deleteNote` calls in `mergeSimilarNotes`, for the pending note after
+  EVOLVE or EXPAND and for the shorter note of a merged pair, are now
+  `invalidateNote(id, agentId)`, as consolidation already did. These notes stay in
+  the collection with `is_active: false`, one point per merge. `getNote` returns
+  retired notes, so links to them would have fed their text into write-time
+  evolution. Each merge now calls `replaceLinkReferences` as consolidation does.
+
+- [#233](https://github.com/amemhq/amem/pull/233) [`23bc400`](https://github.com/amemhq/amem/commit/23bc4006996e82c863948ef2e7d4741bde92540d) Thanks [@heichaowo](https://github.com/heichaowo)! - `manager.search` of the memory capability now always searches with `worldOnly:
+true` and returns the host's `MemorySearchResult` shape.
+
+  OpenClaw calls `getMemorySearchManager` with `{cfg, agentId, purpose?,
+inspectSources?}` (2026.10.9 types) and never a session key, so the
+  `isGroupSession(params?.sessionKey)` check never fired and every caller searched
+  all subjects. There is no sender to scope by, and the host docs forbid deriving
+  an audience from the session-key format, so every call now reads only notes
+  without subjects.
+
+  Hits were `{id, memory, score, context, tags}`. The host reads `path` and
+  `snippet`, and memory-wiki's `path.basename(hit.path)` threw when
+  `search.corpus` was `memory` or `all`. Hits are now `{path: 'amem/<id>',
+startLine: 1, endLine: 1, score, snippet, source: 'memory'}`. The scope change
+  and the shape fix ship in one commit: the shape fix alone would have started
+  delivering every subject's text to the host. `maxResults` is read before `limit`
+  and `topK`. `readFile` is still missing. The `providerRuntime` contract, whose
+  host-minted audience can tell the owner's direct chat apart, is left for later.
+
 ## 2.1.10
 
 ### Patch Changes
