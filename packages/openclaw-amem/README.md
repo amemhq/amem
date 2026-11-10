@@ -126,6 +126,7 @@ Choose the model with `AMEM_LLM_MODEL`. Full env-var reference and examples: **[
 | `topK`                          | `number`                                  | `5`      | Maximum memories to retrieve during search                                                                                         |
 | `agents`                        | `Record<string, {agentId?, collection?}>` | `{}`     | Per-agent overrides. Set `collection` for Mode B physical isolation.                                                               |
 | `hooks.allowConversationAccess` | `boolean`                                 | `false`  | **Required** for automatic memory write-back. Without it, the `agent_end` hook is silently blocked by OpenClaw's security policy. |
+| `crudRetire`                    | `"off" \| "auto"`                         | `"off"`  | Whether the plugin may hide a memory on its own at the end of a turn. `off` never hides one. Hidden memories can be brought back. |
 
 ## Tools
 
@@ -138,6 +139,25 @@ Once installed, the plugin exposes five tools to the agent:
 | `memory_list` | Total active note count for the current agent namespace. |
 | `memory_consolidate` | Manually trigger category-based semantic dedup + link cascading. |
 | `memory_quality_scan` | Scan for low-quality/expired/conflicting notes → Obsidian-compatible review batch file. |
+
+## Undoing a change
+
+After each turn, the plugin saves what it learned. It rewrites a memory it already
+has only when the owner wrote in a direct chat with the agent. The owner is the
+account listed in OpenClaw's `commands.ownerAllowFrom`. In group chats and in other
+people's chats, this step only adds new memories. It hides a memory only when
+`crudRetire` is `"auto"`, and then in any chat. The `memory_add` and
+`memory_consolidate` tools, and the nightly cleanup, can still change memories.
+
+To see and undo changes, run these where OpenClaw runs:
+
+```bash
+openclaw amem retired          # hidden memories, newest first
+openclaw amem restore <id>     # bring one back
+openclaw amem revert <id>      # put back what a memory said before its last change
+```
+
+Both `restore` and `revert` show the memory and ask before they change it.
 
 ## Security & data flow
 

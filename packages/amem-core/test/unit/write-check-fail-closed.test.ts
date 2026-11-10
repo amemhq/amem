@@ -69,7 +69,7 @@ describe('a write check that cannot read the note', () => {
     const c = ctx()
 
     await expect(c.updateNoteContent(ID, 'new', [0, 1], 'h', 'agentB')).rejects.toThrow()
-    await expect(c.invalidateNote(ID, 'agentB')).rejects.toThrow()
+    await expect(c.invalidateNote(ID, 'agentB', 'crud-delete')).rejects.toThrow()
 
     expect(writes).toEqual([])
   })
@@ -87,7 +87,7 @@ describe('a write check that can read the note', () => {
     const c = ctx()
 
     expect(await c.updateNoteContent(ID, 'new', [0, 1], 'h', 'agentA')).toBe(false)
-    expect(await c.invalidateNote(ID, 'agentA')).toBe(false)
+    expect(await c.invalidateNote(ID, 'agentA', 'crud-delete')).toBe(false)
     expect(writes).toEqual([])
   })
 
@@ -95,7 +95,7 @@ describe('a write check that can read the note', () => {
     const c = ctx()
 
     expect(await c.updateNoteContent(ID, 'new', [0, 1], 'h', 'agentB')).toBe(false)
-    expect(await c.invalidateNote(ID, 'agentB')).toBe(false)
+    expect(await c.invalidateNote(ID, 'agentB', 'crud-delete')).toBe(false)
     expect(writes).toEqual([])
   })
 
@@ -103,7 +103,7 @@ describe('a write check that can read the note', () => {
     const c = ctx()
 
     expect(await c.updateNoteContent(ID, 'new', [0, 1], 'h', 'agentA')).toBe(true)
-    expect(await c.invalidateNote(ID, 'agentA')).toBe(true)
+    expect(await c.invalidateNote(ID, 'agentA', 'crud-delete')).toBe(true)
     expect(writes.length).toBeGreaterThan(0)
   })
 })

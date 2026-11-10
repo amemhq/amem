@@ -54,8 +54,8 @@ describe('llmConflictScan', () => {
     // One call for three notes — pairwise would be three.
     expect(anthropicCreate).toHaveBeenCalledOnce()
     const prompt = anthropicCreate.mock.calls[0][0].messages[0].content
-    expect(prompt).toContain('[0] user is vegetarian')
-    expect(prompt).toContain('[2] user loved the steak last night')
+    expect(prompt).toContain('<memory idx="0">user is vegetarian</memory>')
+    expect(prompt).toContain('<memory idx="2">user loved the steak last night</memory>')
   })
 
   it('runs on the strong tier', async () => {
@@ -131,7 +131,7 @@ describe('llmConflictScan', () => {
     const { llmConflictScan } = await loadLlm()
 
     await llmConflictScan(THREE)
-    const prompt = anthropicCreate.mock.calls[0][0].messages[0].content
+    const prompt = anthropicCreate.mock.calls[0][0].system
     expect(prompt).toMatch(/Additive facts/i)
     expect(prompt).toContain('Scout')
   })
@@ -166,7 +166,7 @@ describe('llmConflictScan — the superseded marker', () => {
     const { llmConflictScan } = await loadLlm()
 
     await llmConflictScan(THREE)
-    const prompt = anthropicCreate.mock.calls[0][0].messages[0].content
+    const prompt = anthropicCreate.mock.calls[0][0].system
     expect(prompt).toMatch(/NOT listed in chronological order/i)
     expect(prompt).toMatch(/used to|back in/i)
   })

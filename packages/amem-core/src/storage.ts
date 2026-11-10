@@ -57,7 +57,12 @@ export interface AmemPluginConfig {
   /** Similarity floor for accepting an LLM-chosen UPDATE target. Raise it for
    * cheaper models — a rejected update is stored as a new memory, never lost. */
   crudUpdateMinSim?: number
+  /** Whether agent_end may retire notes: `off` (default) only logs a DELETE, `auto` retires. */
+  crudRetire?: 'off' | 'auto'
 }
+
+/** The path that retired a note, recorded on it as `retired_by`. */
+export type RetiredBy = 'crud-delete' | 'crud-retag' | 'conflict-sweep' | 'merge' | 'consolidate'
 
 /** One entry in a note's evolution history (Story 13-B) */
 export interface EvolutionEntry {
@@ -67,7 +72,7 @@ export interface EvolutionEntry {
   newContext: string
   oldTags: string[]
   newTags: string[]
-  action?: 'update_neighbor' | 'strengthen' | 'consolidate' | 'crud_update'
+  action?: 'update_neighbor' | 'strengthen' | 'consolidate' | 'crud_update' | 'revert'
   /** Story 41: the content this entry replaced, so an overwrite stays recoverable. */
   oldContent?: string
   suggestedConnections?: string[]
@@ -115,6 +120,13 @@ export interface MemoryNote {
    * the whole store every night.
    */
   conflict_scanned_at?: string
+  // ── Who retired this note, when and why. Empty while active, and on notes retired
+  // before these fields existed.
+  retired_at?: string
+  retired_by?: RetiredBy | ''
+  retire_reason?: string
+  /** Set by restoreNote. The conflict sweep then flags the note but does not retire it again. */
+  restored_at?: string
   // ── Story 44: who this memory is ABOUT ──────────────────────────────────────
   // Distinct from `agent_id`/`owner`, which say whose STORE it lives in. A
   // companion meeting several players needs both: one memory store, many people
@@ -642,6 +654,10 @@ export function noteToPoint(note: MemoryNote) {
       conflicts_with: note.conflicts_with ?? [],
       conflict_reason: note.conflict_reason ?? '',
       conflict_scanned_at: note.conflict_scanned_at ?? '',
+      retired_at: note.retired_at ?? '',
+      retired_by: note.retired_by ?? '',
+      retire_reason: note.retire_reason ?? '',
+      restored_at: note.restored_at ?? '',
       subjects: note.subjects ?? [],
       // 31
       ephemeral: note.ephemeral ?? false,
@@ -708,6 +724,10 @@ export function pointToNote(point: { id: string; payload: Record<string, unknown
       : [],
     conflict_reason: typeof p.conflict_reason === 'string' ? p.conflict_reason : '',
     conflict_scanned_at: typeof p.conflict_scanned_at === 'string' ? p.conflict_scanned_at : '',
+    retired_at: typeof p.retired_at === 'string' ? p.retired_at : '',
+    retired_by: typeof p.retired_by === 'string' ? (p.retired_by as RetiredBy | '') : '',
+    retire_reason: typeof p.retire_reason === 'string' ? p.retire_reason : '',
+    restored_at: typeof p.restored_at === 'string' ? p.restored_at : '',
     subjects: Array.isArray(p.subjects)
       ? (p.subjects as unknown[]).filter((v): v is string => typeof v === 'string')
       : [],
@@ -1037,14 +1057,54 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     },
 
     /** Story 33: see `updateNoteContent` — returns false, unwritten, when denied. */
-    async invalidateNote(id: string, caller: string): Promise<boolean> {
+    async invalidateNote(id: string, caller: string, by: RetiredBy, reason = ''): Promise<boolean> {
       await ensureCollection(col)
       if (caller !== SYSTEM_ACTOR && !(await writableNote(id, caller))) return false
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
-        payload: { is_active: false },
+        payload: { is_active: false, retired_at: new Date().toISOString(), retired_by: by, retire_reason: reason },
         points: [id],
       })
       return true
+    },
+
+    /**
+     * Undo `invalidateNote`. Returns false, unwritten, when denied or the note is gone.
+     * Clears pending_merge, which a nightly merge leaves set on the note it folds in, so the
+     * next merge does not fold it in again.
+     */
+    async restoreNote(id: string, caller: string): Promise<boolean> {
+      await ensureCollection(col)
+      if (!(await writableNote(id, caller))) return false
+      await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
+        payload: {
+          is_active: true,
+          pending_merge: false,
+          retired_at: '',
+          retired_by: '',
+          retire_reason: '',
+          restored_at: new Date().toISOString(),
+        },
+        points: [id],
+      })
+      return true
+    },
+
+    /** Retired notes the agent can read, most recently retired first. */
+    async listRetired(agentId: string, limit: number): Promise<MemoryNote[]> {
+      await ensureCollection(col)
+      const retired = { key: 'is_active', match: { value: false } }
+      const must = modeBIsolated ? [retired] : [...(agentFilter(agentId).must as unknown[]), retired]
+      const result = (await qdrant('POST', `/collections/${col}/points/scroll`, {
+        filter: { must },
+        with_payload: true,
+        with_vector: false,
+        limit: 10000,
+      })) as { points: Array<{ id: string; payload: Record<string, unknown> }> }
+      // Notes retired before retired_at existed sort last.
+      const key = (n: MemoryNote) => n.retired_at || ''
+      return readable(result.points.map(pointToNote), agentId)
+        .sort((a, b) => key(b).localeCompare(key(a)) || b.timestamp.localeCompare(a.timestamp))
+        .slice(0, limit)
     },
 
     async getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
@@ -1170,8 +1230,8 @@ export async function deleteNote(id: string): Promise<void> {
   return makeCrud(getCollection()).deleteNote(id)
 }
 
-export async function invalidateNote(id: string, caller: string): Promise<boolean> {
-  return makeCrud(getCollection()).invalidateNote(id, caller)
+export async function invalidateNote(id: string, caller: string, by: RetiredBy, reason = ''): Promise<boolean> {
+  return makeCrud(getCollection()).invalidateNote(id, caller, by, reason)
 }
 
 export async function getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {

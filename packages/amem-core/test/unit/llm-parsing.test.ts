@@ -179,7 +179,7 @@ describe('CRUD about-speaker flag', () => {
     const { llmCrudDecision } = await loadLlm({ AMEM_PROMPT_LOCALE: locale })
     await llmCrudDecision('I like tea a lot', 'noted', [], { speaker: true })
     await llmCrudDecision('I like tea a lot', 'noted', [])
-    const prompts = anthropicCreate.mock.calls.map((c) => c[0].messages[0].content as string)
+    const prompts = anthropicCreate.mock.calls.map((c) => c[0].system as string)
     expect(prompts[0]).toContain('"about"')
     expect(prompts[1]).not.toContain('"about"')
   })

@@ -83,6 +83,38 @@ describe('llmCall provider dispatch', () => {
     expect(arg.messages).toEqual([{ role: 'user', content: 'ping' }])
   })
 
+  it('sends no system field when none is given', async () => {
+    anthropicCreate.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: undefined })
+
+    await llmCall('ping')
+
+    expect(anthropicCreate.mock.calls[0][0]).not.toHaveProperty('system')
+  })
+
+  it('passes system as the top-level Anthropic param', async () => {
+    anthropicCreate.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: undefined })
+
+    await llmCall('ping', 100, 'fast', { system: 'rules' })
+
+    const arg = anthropicCreate.mock.calls[0][0]
+    expect(arg.system).toBe('rules')
+    expect(arg.messages).toEqual([{ role: 'user', content: 'ping' }])
+  })
+
+  it('prepends system as the first message on the OpenAI path', async () => {
+    openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: 'openai' })
+
+    await llmCall('ping', 100, 'fast', { system: 'rules' })
+
+    expect(openaiCreate.mock.calls[0][0].messages).toEqual([
+      { role: 'system', content: 'rules' },
+      { role: 'user', content: 'ping' },
+    ])
+  })
+
   it('honours AMEM_LLM_BASE_URL and AMEM_LLM_API_KEY on the OpenAI client', async () => {
     openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
     const { llmCall } = await loadLlm({

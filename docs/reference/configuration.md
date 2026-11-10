@@ -35,6 +35,7 @@
 | `llmThinking` | `"off" \| "auto"` | `"off"` | Whether fast-tier calls on the Anthropic API turn thinking off. See `AMEM_LLM_THINKING`. |
 | `conflictSweep` | `boolean` | `true` | Run the nightly contradiction sweep. See [Contradiction sweep](#contradiction-sweep). |
 | `crudUpdateMinSim` | `number` | `0.35` | Similarity floor for accepting an LLM-chosen `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
+| `crudRetire` | `"off" \| "auto"` | `"off"` | Whether the `agent_end` CRUD decision may retire memories. See [What agent_end may change](#what-agent-end-may-change). |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, OpenClaw silently blocks automatic memory write-back. |
 
 ### CRUD update safety
@@ -61,6 +62,66 @@ often a correction ("drinks tea" → "switched to coffee") that is related but n
 near-identical. **When you run a cheaper or smaller model, raise it.** Those models are
 more likely to mis-pick. The cost of being strict is a duplicate rather than a
 destroyed memory.
+
+### What agent_end may change
+
+The `agent_end` decision reads the conversation, so whoever is in the chat can
+steer it. What it may change depends on whom the host says the turn belongs to,
+and on `crudRetire`.
+
+| Decision | Owner's direct chat | Any other turn |
+| --- | --- | --- |
+| `NEW` | Stored. A near-duplicate (similarity ≥ 0.85, same subjects) rewrites the note it matches. | Stored as a new note. A near-duplicate is marked `pending_merge` for the nightly merge. |
+| `UPDATE` | Rewrites the target in place. The old text stays in `evolution_history`. | Stored as a new note. |
+| `UPDATE` with a fact about the speaker on an untagged note | Stored as a new tagged note. With `crudRetire: "auto"` the untagged note is also retired. | Stored as a new note. |
+| `DELETE` | With `crudRetire: "auto"` the target is retired. With `"off"` it is only logged. | Same. |
+
+The owner's direct chat is a turn whose host-minted `ctx.memoryAudience` has kind
+`owner-private` and whose `ctx.trigger` is `user` or absent. The host gives
+`owner-private` to a direct root session whose turn it attributes to the owner,
+through `commands.ownerAllowFrom` or an admin client of the gateway, and to children
+spawned from it. Without `commands.ownerAllowFrom`, no channel chat counts. The
+host also gives it to a heartbeat on the owner's main session, which the trigger
+check excludes. The host mints the audience only for a memory plugin that registers
+`providerRuntime`, which the plugin does. Turns without one only add: sessions with
+no chat type, isolated cron runs, and hosts that do not know `providerRuntime`. The
+plugin reads the audience's kind only. The host releases the audience when the turn
+ends, before `agent_end` finishes, so `assertMemoryAudienceCurrent` would fail there.
+
+In every turn, a note with the same hash and subjects is skipped, and link evolution
+still rewrites the `context` and `tags` of linked notes, recording each change in
+their history. The table covers only the `agent_end` decision. The `memory_add` and
+`memory_consolidate` tools, and the nightly merge and contradiction sweep, follow
+their own rules in any session.
+
+Registering `providerRuntime` also moves host readers onto it. Voice fast context
+and memory-wiki read through it, and get the same notes as `manager.search`. The
+gateway's `memory.search` needs `version: 2`: without it the gateway returns an error
+that names the plugin.
+
+### Recovering memories
+
+Every retirement records `retired_at`, `retired_by` and `retire_reason` on the note.
+`retired_by` is one of `crud-delete`, `crud-retag`, `conflict-sweep`, `merge` and
+`consolidate`. Notes retired before 2.1.11 have none of them.
+
+```bash
+openclaw amem retired [--agent <id>] [--limit <n>] [--json]
+openclaw amem restore <id> [--agent <id>] [--yes]
+openclaw amem revert <id> [--agent <id>] [--yes]
+```
+
+- `retired` lists the agent's retired notes, most recent first, 20 by default.
+- `restore` makes a retired note active again and clears its audit fields.
+- `revert` puts back the text of the newest `evolution_history` entry with
+  `oldContent`. The rewrite is recorded with `action: "revert"`, so running it again
+  undoes it.
+- `restore` and `revert` show the note and ask first. Outside a terminal they need
+  `--yes`.
+- `--agent` defaults to the plugin's `agentId`.
+
+The commands run in the `openclaw` CLI process with the plugin's config, not in the
+gateway. They need Qdrant. `revert` also loads the embedding model.
 
 ### Memories about different people
 
@@ -114,11 +175,14 @@ With a speaker key:
   checked again with the same rule before it changes. An update whose target fails the
   check is stored as a new note (tagged if the fact is about the speaker), and a
   delete is skipped. An update about the speaker that targets an untagged note is
-  stored as a new tagged note, and the untagged note is invalidated. Tradeoff: if the
-  model misjudges a world fact as about the speaker, the world note is replaced by a
-  note only that speaker sees.
+  stored as a new tagged note. With `crudRetire: "auto"` the untagged note is also
+  retired. Tradeoff: if the model misjudges a world fact as about the speaker, the
+  world note is replaced by a note only that speaker sees. With `"off"` the untagged
+  note stays, readable by everyone. Updates apply only in the owner's direct chat:
+  see [What agent_end may change](#what-agent-end-may-change).
 - `addMemory` folds a new note into an existing one (same text, or similarity of 0.85
-  or more) only when both have the same subjects. Linking, evolution of a linked note
+  or more) only when both have the same subjects. Outside the owner's direct chat,
+  auto-capture folds only the same text. Linking, evolution of a linked note
   and strengthening links also need the same subjects, and no back-link is added to
   a note with other subjects. The
   nightly merge, consolidation and conflict passes pair notes only when both have the
@@ -185,7 +249,8 @@ sender (cron, heartbeat, CLI) a model can still search for, or add to, any perso
 key, and a note added that way folds into that person's note when the text is close.
 A note without subjects is visible to everyone. `manager.search` of the memory
 capability, which host consumers such as memory-wiki call, returns only notes
-without subjects, even on a single-user install. A group routed into the main session
+without subjects, even on a single-user install. So does the `providerRuntime`
+reader that newer hosts call instead. A group routed into the main session
 (`session.groupScope: "main"`) is not detected as a group. OpenClaw
 itself does not treat a session as a security boundary. Notes captured before this
 behaviour are untagged and stay visible to everyone.
@@ -241,7 +306,7 @@ that case exactly backwards. When the model cannot tell which side is
 superseded, the engine flags the pair for review and retires nothing.
 
 The retirement is a soft delete — the note and its text survive and can be
-restored — but for a system answering in real time, "recoverable" only helps once
+restored with `openclaw amem restore <id>` — but for a system answering in real time, "recoverable" only helps once
 somebody notices. `review` is the default for this reason.
 :::
 

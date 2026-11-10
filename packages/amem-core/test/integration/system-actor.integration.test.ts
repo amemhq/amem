@@ -111,10 +111,10 @@ describe('SYSTEM_ACTOR (integration — requires Qdrant on :6333)', () => {
     const id = `00000000-0000-4000-8000-${String(process.pid).padStart(12, '9')}`
     await ctx.addNote(privateNote(id, 'alice'))
 
-    expect(await ctx.invalidateNote(id, 'mallory')).toBe(false)
+    expect(await ctx.invalidateNote(id, 'mallory', 'crud-delete')).toBe(false)
     expect((await ctx.getNote(id, SYSTEM_ACTOR))?.is_active).toBe(true)
 
-    expect(await ctx.invalidateNote(id, 'alice')).toBe(true)
+    expect(await ctx.invalidateNote(id, 'alice', 'crud-delete')).toBe(true)
     expect((await ctx.getNote(id, SYSTEM_ACTOR))?.is_active).toBe(false)
   })
 })

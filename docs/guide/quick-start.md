@@ -59,6 +59,8 @@ At agent conversation end (`agent_end` hook), the plugin:
 
 1. Reads the **last** user message and the **last** assistant message, each truncated to 500 characters — not the whole conversation
 2. Decides `NEW` / `UPDATE` / `DELETE` / `NONE` per note
-3. Executes changes automatically
+3. Stores every `NEW`. Applies `UPDATE` only in the owner's direct chat and stores
+   it as a new note elsewhere. Applies `DELETE` only with `crudRetire: "auto"`.
 
-This keeps the memory store clean without manual intervention.
+See [What agent_end may change](../reference/configuration.md#what-agent-end-may-change).
+`openclaw amem retired`, `restore` and `revert` undo a change.

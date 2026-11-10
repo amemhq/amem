@@ -38,6 +38,8 @@ import {
 } from '@amemhq/core'
 import { createHash } from 'crypto'
 import { formatMemories } from './format-memories.js'
+import { createProviderRuntime } from './provider.js'
+import { registerAmemCommands, type CliCommand } from './cli.js'
 import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
 import {
   scheduleNightly,
@@ -93,6 +95,7 @@ function register(api: {
   registerMemoryCapability?: (cap: unknown) => void
   registerTool?: (tool: unknown, opts?: unknown) => void
   registerService?: (svc: unknown) => void
+  registerCli?: (registrar: (ctx: { program: CliCommand }) => void, opts?: unknown) => void
 }) {
   const logger = api.logger
   _config = (api.pluginConfig as Record<string, unknown>) || {}
@@ -157,6 +160,10 @@ function register(api: {
   // Story 41: similarity floor for accepting an LLM-chosen CRUD UPDATE target.
   // Undefined here just means "use the engine default"; the env var still wins.
   const crudUpdateMinSim = pluginConfig.crudUpdateMinSim
+
+  // Whether agent_end may retire notes the model picked. Off: DELETE only logs, and a fact about
+  // the speaker that targets an untagged note is stored tagged without retiring the old note.
+  const retireAuto = pluginConfig.crudRetire === 'auto'
 
   // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
   // The runtime per-session agentId is only present on each interface's ctx, not
@@ -285,9 +292,21 @@ function register(api: {
         },
         async closeAllMemorySearchManagers() {},
       },
+      // Hosts that know it prefer it for reads; older hosts ignore it and use runtime.
+      providerRuntime: createProviderRuntime(pluginId, (agentId) => buildScope(resolveAgentId({ agentId }))),
     })
   } else {
     logger.warn('openclaw-amem: api.registerMemoryCapability not available')
+  }
+
+  // ── registerCli: openclaw amem retired | restore | revert ─────────────────────
+  // The descriptor must match manifest cliCommands, or the host loads the plugin to find it.
+  if (typeof api.registerCli === 'function') {
+    api.registerCli(
+      ({ program }) =>
+        registerAmemCommands(program, (agentId) => buildScope(resolveAgentId(agentId ? { agentId } : undefined))),
+      { descriptors: [{ name: 'amem', description: 'Inspect and recover amem memories', hasSubcommands: true }] }
+    )
   }
 
   // ── registerTool: memory_search ──────────────────────────────────────────
@@ -607,6 +626,14 @@ function register(api: {
         // Undefined for cron, heartbeat, CLI and group chats: nothing is tagged or scoped then.
         const speaker = resolveSpeakerKey(ctx)
         const subjects = speaker ? [speaker] : undefined
+        // Host-minted, so chat text cannot forge it. Only the owner typing in their own direct chat
+        // may rewrite a note; every other turn, and a host that sends no audience, only adds. A
+        // heartbeat on the owner's main session also gets owner-private, so the trigger must be a
+        // user one too, the same rule the host uses to drop sender fields. Only the kind is read:
+        // the host releases the audience when the turn ends, before this hook's awaits finish, so
+        // assertMemoryAudienceCurrent would throw here.
+        const ownerTurn =
+          ctx?.memoryAudience?.kind === 'owner-private' && (ctx.trigger === undefined || ctx.trigger === 'user')
         logger.info(
           `openclaw-amem: agent_end hook triggered (agent_id=${agentId}, success=${event.success}, messages=${event.messages?.length ?? 0})`
         )
@@ -700,11 +727,16 @@ function register(api: {
             // defaults to "about the speaker" when it is missing.
             const tag = op.aboutSpeaker ? subjects : undefined
             if (op.action === 'NEW') {
-              await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
+              await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag, rewriteExisting: ownerTurn })
               logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`)
             } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
-              if (target) {
+              if (target && !ownerTurn) {
+                await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag, rewriteExisting: false })
+                logger.info(
+                  `openclaw-amem: CRUD UPDATE on ${target.id.slice(0, 8)} outside the owner's direct chat — stored as a new memory instead`
+                )
+              } else if (target) {
                 const newEmbedding = await encode(op.fact)
                 const hash = createHash('md5').update(op.fact).digest('hex')
 
@@ -730,10 +762,12 @@ function register(api: {
                 // A fact about the speaker must not be written into an untagged note: it would
                 // stay readable by everyone. Store it tagged and retire the untagged note.
                 if (tag && (targetNote.subjects ?? []).length === 0) {
-                  await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
-                  await storageCtx.invalidateNote(target.id, agentId)
+                  const newId = await addMemory(op.fact, agentId, { storageCtx, deadline, subjects: tag })
+                  const retired =
+                    retireAuto &&
+                    (await storageCtx.invalidateNote(target.id, agentId, 'crud-retag', `replaced by ${newId}`))
                   logger.info(
-                    `openclaw-amem: CRUD UPDATE on untagged ${target.id.slice(0, 8)} is about the speaker — stored as a tagged memory instead`
+                    `openclaw-amem: CRUD UPDATE on untagged ${target.id.slice(0, 8)} is about the speaker — stored as a tagged memory instead${retired ? '' : ', the untagged one kept'}`
                   )
                   continue
                 }
@@ -753,13 +787,15 @@ function register(api: {
               }
             } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
-              if (target) {
+              if (target && !retireAuto) {
+                logger.info(`openclaw-amem: CRUD DELETE on ${target.id.slice(0, 8)} not applied — crudRetire is off`)
+              } else if (target) {
                 const targetNote = await storageCtx.getNote(target.id, agentId)
                 if (!targetNote || !visibleToSpeaker(targetNote.subjects, speaker)) {
                   logger.warn(`openclaw-amem: CRUD DELETE on ${target.id.slice(0, 8)} skipped — not the speaker's note`)
                   continue
                 }
-                const ok = await storageCtx.invalidateNote(target.id, agentId)
+                const ok = await storageCtx.invalidateNote(target.id, agentId, 'crud-delete', op.fact)
                 if (!ok) {
                   logger.warn(
                     `openclaw-amem: CRUD DELETE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers, or the note is gone`
