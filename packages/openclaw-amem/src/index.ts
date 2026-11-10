@@ -234,20 +234,23 @@ function register(api: {
                     workspaceDir: dbPath,
                   }
                 },
-                async search(query: string, opts: { limit?: number; topK?: number } = {}) {
+                async search(query: string, opts: { maxResults?: number; limit?: number; topK?: number } = {}) {
                   try {
-                    const topK = opts.limit || opts.topK || 5
-                    // A group has no single speaker; see the memory_search tool.
+                    const topK = opts.maxResults || opts.limit || opts.topK || 5
+                    // The host passes no sender and no session key to getMemorySearchManager,
+                    // so nothing here says who is asking. Only notes about nobody, for every caller.
                     const results = await searchMemory(query, topK, scope.agentId, {
                       storageCtx: scope.storageCtx,
-                      worldOnly: isGroupSession(params?.sessionKey),
+                      worldOnly: true,
                     })
+                    // The host's MemorySearchResult: memory-wiki calls path.basename(hit.path).
                     return results.map((r) => ({
-                      id: r.id,
-                      memory: r.content,
+                      path: `amem/${r.id}`,
+                      startLine: 1,
+                      endLine: 1,
                       score: r.similarity,
-                      context: r.context,
-                      tags: r.tags.join(', '),
+                      snippet: r.content,
+                      source: 'memory' as const,
                     }))
                   } catch (err) {
                     logger.warn(`openclaw-amem: search failed — ${(err as Error).message}`)
