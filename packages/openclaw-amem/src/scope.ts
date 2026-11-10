@@ -29,6 +29,14 @@ export interface AgentCtx {
   messageChannel?: string
   /** Tool ctx only: the trusted sender id of the current run. */
   requesterSenderId?: string
+  /**
+   * Hook ctx: minted by the host, only for a memory plugin that registers providerRuntime.
+   * `owner-private` is a direct root session whose turn the host attributes to the owner
+   * (commands.ownerAllowFrom or an admin gateway client), whatever started the turn.
+   */
+  memoryAudience?: { kind: 'owner-private' | 'conversation' }
+  /** Hook ctx: what started the run, e.g. `user`, `heartbeat`, `cron`. Absent counts as `user`. */
+  trigger?: string
 }
 
 /**

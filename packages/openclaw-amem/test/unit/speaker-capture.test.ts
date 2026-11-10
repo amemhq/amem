@@ -34,12 +34,12 @@ function setup() {
   return setupWith(undefined)
 }
 
-function setupWith(config: unknown) {
+function setupWith(config: unknown, pluginConfig: Record<string, unknown> = {}) {
   const hooks: Record<string, Hook> = {}
   const factories: Record<string, (ctx: unknown) => Tool> = {}
   const api = {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    pluginConfig: {},
+    pluginConfig,
     config,
     on: (name: string, fn: Hook) => {
       hooks[name] = fn
@@ -62,6 +62,9 @@ const event = {
   ],
 }
 const dm = { agentId: 'main', channel: 'discord', senderId: 'u1', sessionKey: 'agent:main:main' }
+// The host mints this for the owner's own direct chat. Only then may agent_end rewrite a note.
+const ownerDm = { ...dm, memoryAudience: { kind: 'owner-private' } }
+const retireAuto = { crudRetire: 'auto' }
 
 beforeEach(() => {
   cancelNightly()
@@ -109,7 +112,7 @@ describe('agent_end capture', () => {
     encode.mockResolvedValue([1, 0])
     storageCtx.getNote.mockResolvedValue({ embedding: [0, 1] })
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    await setup().hooks.agent_end(event, ownerDm)
 
     expect(storageCtx.updateNoteContent).not.toHaveBeenCalled()
     expect(addMemory.mock.calls[0][2].subjects).toEqual(['discord:u1'])
@@ -120,7 +123,7 @@ describe('agent_end capture', () => {
     encode.mockResolvedValue([1, 0])
     storageCtx.getNote.mockResolvedValue({ embedding: [0, 1] })
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: false }])
-    await setup().hooks.agent_end(event, dm)
+    await setup().hooks.agent_end(event, ownerDm)
 
     expect(addMemory.mock.calls[0][2].subjects).toBeUndefined()
   })
@@ -129,13 +132,26 @@ describe('agent_end capture', () => {
     searchMemory.mockResolvedValue([{ id: 'abcdefgh', content: 'old' }])
     encode.mockResolvedValue([1, 0])
     storageCtx.getNote.mockResolvedValue({ embedding: [1, 0], subjects: [] })
+    storageCtx.invalidateNote.mockResolvedValue(true)
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    await setupWith(undefined, retireAuto).hooks.agent_end(event, ownerDm)
 
     expect(storageCtx.updateNoteContent).not.toHaveBeenCalled()
     expect(addMemory.mock.calls[0][2].subjects).toEqual(['discord:u1'])
     // The superseded untagged note must not stay active next to the tagged one.
-    expect(storageCtx.invalidateNote).toHaveBeenCalledWith('abcdefgh', 'main')
+    expect(storageCtx.invalidateNote).toHaveBeenCalledWith('abcdefgh', 'main', 'crud-retag', 'replaced by id1')
+  })
+
+  it('keeps the untagged note when crudRetire is off', async () => {
+    searchMemory.mockResolvedValue([{ id: 'abcdefgh', content: 'old' }])
+    encode.mockResolvedValue([1, 0])
+    storageCtx.getNote.mockResolvedValue({ embedding: [1, 0], subjects: [] })
+    llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
+    await setup().hooks.agent_end(event, ownerDm)
+
+    expect(storageCtx.updateNoteContent).not.toHaveBeenCalled()
+    expect(addMemory.mock.calls[0][2].subjects).toEqual(['discord:u1'])
+    expect(storageCtx.invalidateNote).not.toHaveBeenCalled()
   })
 
   it('updates in place a note already tagged for the speaker', async () => {
@@ -144,7 +160,7 @@ describe('agent_end capture', () => {
     storageCtx.getNote.mockResolvedValue({ embedding: [1, 0], subjects: ['discord:u1'] })
     storageCtx.updateNoteContent.mockResolvedValue(true)
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    await setup().hooks.agent_end(event, ownerDm)
 
     expect(storageCtx.updateNoteContent).toHaveBeenCalled()
     expect(addMemory).not.toHaveBeenCalled()
@@ -184,11 +200,11 @@ describe('agent_end candidate scope', () => {
   })
 
   it('indexes the offered notes from zero, so a DELETE hits the note the model saw', async () => {
-    llmCrudDecision.mockResolvedValue([{ action: 'DELETE', fact: '', existingIdx: 1, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    llmCrudDecision.mockResolvedValue([{ action: 'DELETE', fact: 'gone', existingIdx: 1, aboutSpeaker: true }])
+    await setupWith(undefined, retireAuto).hooks.agent_end(event, dm)
     expect((llmCrudDecision.mock.calls[0][2] as Array<{ idx: number }>).map((m) => m.idx)).toEqual([0, 1])
     expect(storageCtx.invalidateNote).toHaveBeenCalledTimes(1)
-    expect(storageCtx.invalidateNote).toHaveBeenCalledWith('mine', 'main')
+    expect(storageCtx.invalidateNote).toHaveBeenCalledWith('mine', 'main', 'crud-delete', 'gone')
   })
 
   it('skips a DELETE when the note stopped being visible after the search', async () => {
@@ -197,7 +213,7 @@ describe('agent_end candidate scope', () => {
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u1'] })
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u1', 'discord:u2'] })
     llmCrudDecision.mockResolvedValue([{ action: 'DELETE', fact: '', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    await setupWith(undefined, retireAuto).hooks.agent_end(event, dm)
     expect(storageCtx.invalidateNote).not.toHaveBeenCalled()
   })
 
@@ -208,7 +224,7 @@ describe('agent_end candidate scope', () => {
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u1'] })
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u2'] })
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, dm)
+    await setupWith(undefined, retireAuto).hooks.agent_end(event, ownerDm)
     expect(storageCtx.updateNoteContent).not.toHaveBeenCalled()
     expect(storageCtx.invalidateNote).not.toHaveBeenCalled()
     expect(addMemory.mock.calls[0][2].subjects).toEqual(['discord:u1'])
@@ -221,7 +237,7 @@ describe('agent_end candidate scope', () => {
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u1'] })
       .mockResolvedValueOnce({ embedding: [1, 0], subjects: ['discord:u1', 'discord:u2'] })
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: false }])
-    await setup().hooks.agent_end(event, dm)
+    await setup().hooks.agent_end(event, ownerDm)
     expect(storageCtx.updateNoteContent).not.toHaveBeenCalled()
     expect(addMemory.mock.calls[0][2].subjects).toBeUndefined()
   })
@@ -237,15 +253,20 @@ describe('agent_end UPDATE on an untagged note', () => {
 
   it('updates in place for a world fact', async () => {
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: false }])
-    await setup().hooks.agent_end(event, dm)
+    await setup().hooks.agent_end(event, ownerDm)
     expect(storageCtx.updateNoteContent).toHaveBeenCalled()
     expect(storageCtx.invalidateNote).not.toHaveBeenCalled()
     expect(addMemory).not.toHaveBeenCalled()
   })
 
-  it('updates in place when there is no speaker', async () => {
+  it('updates in place when there is no speaker key', async () => {
     llmCrudDecision.mockResolvedValue([{ action: 'UPDATE', fact: 'new', existingIdx: 0, aboutSpeaker: true }])
-    await setup().hooks.agent_end(event, { agentId: 'main', sessionKey: 'agent:main:cron:1' })
+    // An owner turn with no channel sender, such as the owner's local CLI run.
+    await setup().hooks.agent_end(event, {
+      agentId: 'main',
+      sessionKey: 'agent:main:main',
+      memoryAudience: { kind: 'owner-private' },
+    })
     expect(storageCtx.updateNoteContent).toHaveBeenCalled()
     expect(storageCtx.invalidateNote).not.toHaveBeenCalled()
     expect(addMemory).not.toHaveBeenCalled()

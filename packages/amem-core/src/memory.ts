@@ -194,9 +194,16 @@ export async function addMemory(
      * stored with fewer links rather than not at all. Absent: no limit.
      */
     deadline?: number
+    /**
+     * False: never rewrite an existing note. A near-duplicate (similarity 0.85 or more) is
+     * inserted and marked pending_merge, so the nightly merge folds it and keeps both texts.
+     * Default true.
+     */
+    rewriteExisting?: boolean
   }
 ): Promise<string> {
   const scope = opts?.scope ?? 'private'
+  const rewriteExisting = opts?.rewriteExisting ?? true
   const subjects = opts?.subjects ?? []
   const ctx = opts?.storageCtx ?? defaultCtx()
 
@@ -240,7 +247,7 @@ export async function addMemory(
   // because the best match overall can belong to someone else.
   const probe = await ctx.queryByEmbedding(embedding, 5, agentId, 0.0, subjects[0])
   const topMatch = probe.filter((r) => sameSubjects(r.note, { subjects })).slice(0, 1)
-  if (topMatch.length > 0 && topMatch[0].score >= 0.85) {
+  if (rewriteExisting && topMatch.length > 0 && topMatch[0].score >= 0.85) {
     // Story 33: the query also returns SHARED notes owned by other agents. Only
     // fold into the match when we may write it; otherwise fall through and insert
     // our own note rather than overwriting someone else's memory.
@@ -257,7 +264,8 @@ export async function addMemory(
   }
 
   // ── Layer 2b: Pending merge flag for borderline similarity (0.72-0.85) ──────
-  const pendingMerge = topMatch.length > 0 && topMatch[0].score >= 0.72 && topMatch[0].score < 0.85
+  const pendingMerge =
+    topMatch.length > 0 && topMatch[0].score >= 0.72 && (topMatch[0].score < 0.85 || !rewriteExisting)
   if (pendingMerge) {
     console.log(`[add] dedup: borderline sim (sim=${topMatch[0].score.toFixed(3)}), marking pending_merge=true`)
   }
@@ -891,7 +899,7 @@ export async function mergeSimilarNotes(
           evolution_history: JSON.stringify(await historyAfterUpdate(ctx, bestNeighbor, agentId, oldHistory)),
           evolution_type: 'EVOLVE',
         })
-        await ctx.invalidateNote(pendingNote.id, agentId)
+        await ctx.invalidateNote(pendingNote.id, agentId, 'merge', `merged into ${bestNeighbor.id}`)
         // getNote returns retired notes, so a link left here would feed this text back into
         // the write-time evolution of every note linked to it.
         await ctx.replaceLinkReferences(pendingNote.id, bestNeighbor.id, agentId)
@@ -919,7 +927,7 @@ export async function mergeSimilarNotes(
           evolution_history: JSON.stringify(await historyAfterUpdate(ctx, bestNeighbor, agentId, oldHistory)),
           evolution_type: 'EXPAND',
         })
-        await ctx.invalidateNote(pendingNote.id, agentId)
+        await ctx.invalidateNote(pendingNote.id, agentId, 'merge', `merged into ${bestNeighbor.id}`)
         // getNote returns retired notes, so a link left here would feed this text back into
         // the write-time evolution of every note linked to it.
         await ctx.replaceLinkReferences(pendingNote.id, bestNeighbor.id, agentId)
@@ -988,7 +996,7 @@ export async function mergeSimilarNotes(
       const newHash = createHash('md5').update(result.merged).digest('hex')
       // Retire the other note only once the merged text is written, or both are lost.
       if (await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash, agentId)) {
-        await ctx.invalidateNote(dropNote.id, agentId)
+        await ctx.invalidateNote(dropNote.id, agentId, 'merge', `merged into ${keepNote.id}`)
         await ctx.replaceLinkReferences(dropNote.id, keepNote.id, agentId)
         deletedIds.add(dropNote.id)
         mergedCount++
@@ -1164,7 +1172,7 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
       await ctx.updateNote(keepNote)
 
       // 软删除 DropNote
-      await ctx.invalidateNote(dropNote.id, agentId)
+      await ctx.invalidateNote(dropNote.id, agentId, 'consolidate', `merged into ${keepNote.id}`)
 
       // 级联更新 links
       await ctx.replaceLinkReferences(dropNote.id, keepNote.id, agentId)
@@ -1331,13 +1339,22 @@ export async function conflictSweep(
           // vegetarian", written today, is the newer row and the older fact.
           // Retiring by ingestion time would then silence the CURRENT memory.
           const superseded = supersededIndex === a ? noteA : supersededIndex === b ? noteB : null
-          if (!superseded) {
+          if (superseded?.restored_at) {
+            // An operator brought this note back after an earlier retirement. Do not overrule them.
+            log(`[conflict] auto: ${superseded.id.slice(0, 8)} was restored by an operator — marked only, not retired`)
+          } else if (!superseded) {
             // The model could not tell. Marking already happened above, so the
             // conflict is visible for review — but nothing gets retired on a
             // guess. This is the safe half of auto mode, not a failure.
             log(`[conflict] auto: no superseded side identified — marked only, nothing retired`)
           } else {
-            const ok = await ctx.invalidateNote(superseded.id, agentId)
+            const other = superseded === noteA ? noteB : noteA
+            const ok = await ctx.invalidateNote(
+              superseded.id,
+              agentId,
+              'conflict-sweep',
+              `superseded by ${other.id}: ${reason}`
+            )
             if (ok) {
               retired++
               log(`[conflict] auto-retired the superseded note ${superseded.id.slice(0, 8)}`)
@@ -1361,4 +1378,36 @@ export async function conflictSweep(
       `; ${pairsFound} pair(s) found, ${retired} retired`
   )
   return { scanned: notes.length, pairsFound, retired, batchesScanned, batchesSkipped, batchesFailed }
+}
+
+// ── revertNote ────────────────────────────────────────────────────────────────
+export type RevertResult =
+  { status: 'ok'; content: string; replaced: string } | { status: 'not_found' | 'no_history' | 'denied' }
+
+/**
+ * Put back the text a note had before its last rewrite: the newest history entry with
+ * `oldContent`. The rewrite this makes is recorded like any other, with action `revert`,
+ * so a second revert undoes the first.
+ */
+export async function revertNote(
+  id: string,
+  caller: string,
+  ctx: StorageContext = defaultCtx()
+): Promise<RevertResult> {
+  const note = await ctx.getNote(id, caller)
+  if (!note) return { status: 'not_found' }
+  const entry = [...note.evolution_history].reverse().find((e) => typeof e.oldContent === 'string' && e.oldContent)
+  if (!entry?.oldContent) return { status: 'no_history' }
+  const content = entry.oldContent
+  const embedding = await encode(buildEmbedText({ ...note, content }))
+  const hash = createHash('md5').update(content).digest('hex')
+  if (!(await ctx.updateNoteContent(id, content, embedding, hash, caller))) return { status: 'denied' }
+  const fresh = await ctx.getNote(id, caller)
+  const last = fresh?.evolution_history[fresh.evolution_history.length - 1]
+  if (fresh && last?.action === 'crud_update') {
+    await ctx.patchNotePayload(id, {
+      evolution_history: JSON.stringify([...fresh.evolution_history.slice(0, -1), { ...last, action: 'revert' }]),
+    })
+  }
+  return { status: 'ok', content, replaced: note.content }
 }

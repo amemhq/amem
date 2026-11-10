@@ -7,6 +7,8 @@
  * filter what is saved.
  */
 
+import { escapeContent, escapeAttr } from '@amemhq/core'
+
 export interface MemoryRow {
   id: string
   content: string
@@ -16,14 +18,7 @@ export interface MemoryRow {
   via?: 'match' | 'link'
 }
 
-/** Replace the "<" of anything that reads as a memories/memory tag, with optional space after "<" or "</". */
-export function escapeContent(text: string): string {
-  return text.replace(/<(?=\s*\/?\s*memor(?:ies|y))/gi, '&lt;')
-}
-
-function escapeAttr(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
+export { escapeContent }
 
 function createdDate(timestamp: string | undefined): string {
   const t = timestamp ? new Date(timestamp) : undefined

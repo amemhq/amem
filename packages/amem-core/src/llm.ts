@@ -4,7 +4,8 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { t } from './prompts.js'
+import { t, dataRulesEn } from './prompts.js'
+import { dataTag, dataBlock } from './data-block.js'
 import { warn, error } from './config.js'
 import { hasTimeFor, MIN_CALL_MS, type CallOptions } from './deadline.js'
 import { stopIfForegroundBusy } from './background.js'
@@ -310,8 +311,9 @@ export async function llmCall(
   prompt: string,
   maxTokens = 500,
   role: LlmRole = 'fast',
-  opts: CallOptions = {}
+  opts: CallOptions & { system?: string } = {}
 ): Promise<string | null> {
+  const { system } = opts
   // Outside the try below: a preempted nightly step has to stop, not read as a failed call.
   stopIfForegroundBusy()
   if (!hasTimeFor(opts.deadline)) {
@@ -345,15 +347,15 @@ export async function llmCall(
   let text: string | null = null
   try {
     if (provider === 'openai') {
-      text = await openaiCall(prompt, model, effectiveMaxTokens, baseURL, request())
+      text = await openaiCall(prompt, system, model, effectiveMaxTokens, baseURL, request())
     } else if (!thinkingOff) {
-      text = await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request())
+      text = await anthropicCall(prompt, system, model, effectiveMaxTokens, baseURL, request())
     } else {
       try {
-        text = await anthropicCall(prompt, model, effectiveMaxTokens, baseURL, request(), { type: 'disabled' })
+        text = await anthropicCall(prompt, system, model, effectiveMaxTokens, baseURL, request(), { type: 'disabled' })
       } catch (e) {
         if ((e as { status?: number }).status !== 400 || !hasTimeFor(opts.deadline)) throw e
-        text = await anthropicCall(prompt, model, roomToThink(maxTokens), baseURL, request())
+        text = await anthropicCall(prompt, system, model, roomToThink(maxTokens), baseURL, request())
         _thinkingStaysOn.add(pair)
         warnOnce(`thinking-on:${pair}`, `[amem] ${model} refused thinking disabled; its fast calls keep thinking`)
       }
@@ -377,6 +379,7 @@ type RequestLimits = { timeout: number; maxRetries: number }
 
 async function anthropicCall(
   prompt: string,
+  system: string | undefined,
   model: string,
   maxTokens: number,
   baseURL: string | undefined,
@@ -387,6 +390,7 @@ async function anthropicCall(
     {
       model,
       max_tokens: maxTokens,
+      ...(system && { system }),
       messages: [{ role: 'user', content: prompt }],
       ...(thinking && { thinking }),
     },
@@ -409,6 +413,7 @@ function isOpenAIReasoning(model: string): boolean {
 
 async function openaiCall(
   prompt: string,
+  system: string | undefined,
   model: string,
   maxTokens: number,
   baseURL: string | undefined,
@@ -420,7 +425,7 @@ async function openaiCall(
     {
       model,
       ...(isOpenAIReasoning(model) ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
-      messages: [{ role: 'user', content: prompt }],
+      messages: [...(system ? [{ role: 'system' as const, content: system }] : []), { role: 'user', content: prompt }],
     },
     request
   )
@@ -516,7 +521,7 @@ const VALID_CATEGORIES = new Set<string>([
 ])
 
 export async function llmConstructNote(content: string, opts: CallOptions = {}): Promise<NoteStructure> {
-  const prompt = `Analyze the following text and respond with valid JSON only (no markdown fences, no explanation, no comments). All string values must use standard double quotes and be properly escaped:
+  const system = `Analyze the text in the user message and respond with valid JSON only (no markdown fences, no explanation, no comments). All string values must use standard double quotes and be properly escaped:
 {
   "keywords": ["keyword1", "keyword2"],
   "tags": ["tag1", "tag2"],
@@ -549,9 +554,9 @@ confidence guide (Story 27):
 - medium: some ambiguity — e.g. "learned X method" could be either memory or knowledge
 - low: LLM is uncertain — vague, fragmentary, or mixed content
 
-Text: ${content}`
+${dataRulesEn('<memory>')}`
 
-  const raw = await llmCall(prompt, 400, 'fast', opts)
+  const raw = await llmCall(dataTag('memory', content), 400, 'fast', { ...opts, system })
   if (!raw) {
     // The note is still stored after this, with none of these fields filled in.
     // Searching it later finds a note that matches almost nothing.
@@ -609,13 +614,16 @@ export async function llmShouldLink(
   candidateContent: string,
   opts: CallOptions = {}
 ): Promise<boolean> {
-  const prompt = `Do these two memory notes have a meaningful relationship that would be useful to link?
+  const system = `Do the two memory notes in the user message (<memory label="A"> and <memory label="B">) have a meaningful relationship that would be useful to link?
 Reply with only "yes" or "no".
 
-Note A: ${noteContent}
-Note B: ${candidateContent}`
+${dataRulesEn('<memories>, <memory>')}`
+  const prompt = dataBlock('memories', [
+    dataTag('memory', noteContent, { label: 'A' }),
+    dataTag('memory', candidateContent, { label: 'B' }),
+  ])
 
-  const raw = await llmCall(prompt, 10, 'fast', opts)
+  const raw = await llmCall(prompt, 10, 'fast', { ...opts, system })
   if (!raw) return false
   return raw.toLowerCase().startsWith('yes')
 }
@@ -640,17 +648,19 @@ export async function llmCrudDecision(
   existingMemories: Array<{ idx: number; content: string }>,
   opts: CallOptions & { speaker?: boolean } = {}
 ): Promise<MemoryOperation[]> {
-  const memoryList =
-    existingMemories.length > 0 ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n') : '(none)'
-
-  const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList, opts.speaker)
+  const { system, user: prompt } = t.crudDecision(
+    userText.slice(0, 500),
+    assistantText.slice(0, 500),
+    existingMemories,
+    opts.speaker
+  )
 
   try {
     // Story 42: defaults to `fast`. It IS a contradiction judgement, but it runs
     // on every turn, and its one destructive failure mode (overwriting the wrong
     // memory) is already handled architecturally by the Story 41 guard rather
     // than by buying a bigger model. Operators who want it on `strong` can say so.
-    const raw = await llmCall(prompt, 400, resolveCrudRole(), opts)
+    const raw = await llmCall(prompt, 400, resolveCrudRole(), { ...opts, system })
     if (!raw) return []
     // Strip reasoning scaffolding first — this path extracts the array straight
     // from the response and would otherwise trip over a <think> block.
@@ -693,11 +703,11 @@ export async function llmShouldMerge(
   contentA: string,
   contentB: string
 ): Promise<{ shouldMerge: boolean; merged?: string }> {
-  const prompt = t.shouldMerge(contentA, contentB)
+  const { system, user: prompt } = t.shouldMerge(contentA, contentB)
 
   // Story 42: merge adjudication is the contradiction class — the one place a
   // stronger model measurably helps. Runs on `strong` when one is configured.
-  const raw = await llmCall(prompt, 300, 'strong')
+  const raw = await llmCall(prompt, 300, 'strong', { system })
   if (!raw) return { shouldMerge: false }
 
   try {
@@ -727,11 +737,11 @@ export async function llmEvolutionJudge(
   oldContent: string,
   newContent: string
 ): Promise<{ type: EvolutionType; mergedContent?: string }> {
-  const prompt = t.evolutionJudge(oldContent, newContent)
+  const { system, user: prompt } = t.evolutionJudge(oldContent, newContent)
 
   // Story 42: EVOLVE/CONFLICT/EXPAND/NEW is literally contradiction
   // classification — the tier-sensitive call. Runs on `strong` when configured.
-  const raw = await llmCall(prompt, 300, 'strong')
+  const raw = await llmCall(prompt, 300, 'strong', { system })
   // 'NEW' is a verdict, and this path reaches it without the LLM ever answering:
   // the pending_merge flag clears and the pair stays two notes.
   if (!raw) {
@@ -766,8 +776,7 @@ export async function llmEvolveNote(
   linkedNotes: Array<{ id: string; content: string }>,
   opts: CallOptions = {}
 ): Promise<EvolvedNote> {
-  const linkedStr = linkedNotes.map((n) => `- ID: ${n.id}\n  Content: ${n.content}`).join('\n')
-  const prompt = `A memory note has gained new connections. Update its context, tags, and decide whether to strengthen connections with specific neighbors.
+  const system = `A memory note has gained new connections. Update its context, tags, and decide whether to strengthen connections with specific neighbors.
 Reply with JSON only (no markdown):
 {
   "tags": ["tag1", "tag2", ...],
@@ -780,15 +789,18 @@ Reply with JSON only (no markdown):
 Guidelines:
 - "tags" and "context" are for updating the original note based on new connections.
 - "should_strengthen" is a decision whether this note should strengthen its connections to any of the newly linked notes (neighbors).
-- "suggested_connections" must contain only IDs from the newly linked notes (neighbors) listed below.
+- "suggested_connections" must contain only IDs from the newly linked notes (neighbors) in the user message.
 - "tags_to_update" are updated tags for the original note itself if we strengthen connections.
 
-Original note content: ${content}
+The user message holds the original note (<memory>) and the newly linked notes (neighbors, <memory id="...">).
 
-Newly linked notes (neighbors):
-${linkedStr}`
+${dataRulesEn('<memory>, <memories>')}`
+  const prompt = `${dataTag('memory', content)}\n\n${dataBlock(
+    'memories',
+    linkedNotes.map((n) => dataTag('memory', n.content, { id: n.id }))
+  )}`
 
-  const raw = await llmCall(prompt, 500, 'fast', opts)
+  const raw = await llmCall(prompt, 500, 'fast', { ...opts, system })
   if (!raw) return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
 
   try {
@@ -847,10 +859,10 @@ export interface ConflictPair {
  */
 export async function llmConflictScan(contents: string[]): Promise<ConflictPair[] | null> {
   if (contents.length < 2) return []
-  const numbered = contents.map((c, i) => `[${i}] ${c}`).join('\n')
+  const { system, user } = t.conflictScan(contents)
 
   // Outside the try: a preempted nightly step has to stop, not read as no answer.
-  const raw = await llmCall(t.conflictScan(numbered), 600, 'strong')
+  const raw = await llmCall(user, 600, 'strong', { system })
   if (!raw) return null
   try {
     const cleaned = stripReasoning(raw)

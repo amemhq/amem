@@ -22,6 +22,23 @@ merge could not be undone. It now keeps that text. A memory folded into another
 is hidden from search, not removed, and the combined memory keeps its earlier
 wording in its history.
 
+**What the plugin saves after a turn no longer rewrites or hides your memories
+unless the owner is talking.** After each turn the plugin decides what to
+remember. Before, anyone in a chat could ask it to rewrite or hide memories it
+already had. Now this step rewrites a memory only when the owner wrote in a
+direct chat with the agent. The owner is the account in OpenClaw's
+`commands.ownerAllowFrom`. In every other chat it only adds new memories. It
+hides a memory only if you set `crudRetire` to `"auto"`. The `memory_add` tool
+and the nightly cleanup work as before. A hidden memory now records when it was
+hidden, by what and why. `openclaw amem retired` lists hidden memories,
+`openclaw amem restore <id>` brings one back, and `openclaw amem revert <id>`
+puts back what a memory said before its last change. The plugin's own model
+prompts now mark conversation text and saved memories as data, so text inside
+them cannot pass as an instruction.
+
+If something calls the gateway's `memory.search` directly, it must now send
+`version: 2`.
+
 Update the plugin. Restart the gateway.
 
 ## 2.1.10

@@ -73,7 +73,7 @@ describe('a pending note merged into its neighbour', () => {
   it('is retired once the merged text is written', async () => {
     const ctx = makeCtx(notes(), true)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
-    expect(ctx.invalidateNote).toHaveBeenCalledWith('pending', 'main')
+    expect(ctx.invalidateNote).toHaveBeenCalledWith('pending', 'main', 'merge', 'merged into neighbour')
   })
 
   it('stays when the write is refused', async () => {
@@ -97,7 +97,7 @@ describe('the shorter of two similar notes', () => {
     const ctx = makeCtx(notes(), true)
     await mergeSimilarNotes('main', ctx, '2026-11-04')
     expect(ctx.updateNoteContent).toHaveBeenCalledWith('a', 'merged text', [1, 0], expect.any(String), 'main')
-    expect(ctx.invalidateNote).toHaveBeenCalledWith('b', 'main')
+    expect(ctx.invalidateNote).toHaveBeenCalledWith('b', 'main', 'merge', 'merged into a')
   })
 
   it('stays when the write is refused', async () => {

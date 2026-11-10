@@ -118,6 +118,19 @@ describe('conflictSweep — auto mode', () => {
     expect(res.retired).toBe(1)
     expect(ctx.invalidateNote).toHaveBeenCalledOnce()
     expect(vi.mocked(ctx.invalidateNote).mock.calls[0][0]).toBe('aaa') // the one the model named
+    // The audit fields name the path, the surviving note and the model's reason.
+    expect(vi.mocked(ctx.invalidateNote).mock.calls[0].slice(2)).toEqual(['conflict-sweep', `superseded by ${NEW.id}: diet`])
+  })
+
+  it('marks but does not retire a note an operator restored', async () => {
+    conflictScan.mockResolvedValue([{ a: I_NEW, b: I_OLD, reason: 'diet', supersededIndex: I_OLD }])
+    const ctx = makeCtx([{ ...OLD, restored_at: '2026-11-10T00:00:00.000Z' }, NEW])
+
+    const res = await conflictSweep('main', { mode: 'auto', storageCtx: ctx })
+
+    expect(res.retired).toBe(0)
+    expect(ctx.invalidateNote).not.toHaveBeenCalled()
+    expect(conflictMarks(ctx)).toHaveLength(2)
   })
 
   it('still marks both notes in auto mode, so the decision stays auditable', async () => {

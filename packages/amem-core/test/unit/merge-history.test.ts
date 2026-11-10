@@ -195,5 +195,6 @@ describe('consolidation', () => {
     expect(byId.get('drop')!.is_active).toBe(false)
     expect(recoverable(byId, 'the longer synthetic note of the pair')).toBe(true)
     expect(recoverable(byId, 'the shorter one')).toBe(true)
+    expect(ctx.invalidateNote).toHaveBeenCalledWith('drop', 'main', 'consolidate', 'merged into keep')
   })
 })

@@ -13,6 +13,13 @@
       "memory_quality_scan"
     ]
   },
+  "cliCommands": [
+    {
+      "name": "amem",
+      "description": "Inspect and recover amem memories",
+      "hasSubcommands": true
+    }
+  ],
   "setup": {
     "providers": [
       {
@@ -156,6 +163,15 @@
         "type": "number",
         "default": 0.35,
         "description": "Similarity floor (0-1) for accepting an LLM-chosen CRUD UPDATE target. Below it the fact is stored as a new memory instead of overwriting, so a mis-picked memory is never destroyed. Raise it for cheaper/weaker models. Overridden by AMEM_CRUD_UPDATE_MIN_SIM."
+      },
+      "crudRetire": {
+        "type": "string",
+        "enum": [
+          "off",
+          "auto"
+        ],
+        "default": "off",
+        "description": "Whether the end-of-turn memory decision may retire memories. off (default): a DELETE is logged and not applied, and a fact about the speaker that targets an untagged memory is stored as a new tagged memory without retiring the old one. auto: both retire the old memory, which `openclaw amem restore <id>` can undo."
       },
       "agents": {
         "type": "object",
