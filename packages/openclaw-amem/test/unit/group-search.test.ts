@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // In a group session a search with no subject reads only notes about nobody. Cron, heartbeat, CLI
-// and direct chats are unchanged. Synthetic data only.
+// and direct chats are unchanged. The memory capability's manager.search does not know who is
+// asking and always reads only notes about nobody. Synthetic data only.
 
 const { searchMemory, addMemory, llmCrudDecision, storageCtx } = vi.hoisted(() => ({
   searchMemory: vi.fn(),
@@ -23,7 +24,7 @@ import { cancelNightly, unwatchAgentEvents } from '../../src/nightly.js'
 
 type Hook = (event: unknown, ctx?: unknown) => Promise<void>
 type Tool = { execute: (id: string, params: Record<string, unknown>) => Promise<unknown> }
-type Manager = { search: (query: string, opts?: { limit?: number }) => Promise<unknown> }
+type Manager = { search: (query: string, opts?: { maxResults?: number; limit?: number }) => Promise<unknown> }
 type Capability = { runtime: { getMemorySearchManager: (ctx: unknown) => Promise<{ manager: Manager }> } }
 
 function setup() {
@@ -95,20 +96,36 @@ describe('memory_search tool', () => {
 })
 
 describe('memory capability manager', () => {
-  it('searches only notes about nobody when the host passes a group session key', async () => {
-    const m = await (await setup()).manager(group)
-    await m.search('q')
+  it('searches only notes about nobody, whatever context the host passes', async () => {
+    const s = setup()
+    for (const ctx of [group, room, dm, cron, { agentId: 'main' }, undefined]) {
+      await (await s.manager(ctx)).search('q')
+    }
 
-    expect(searchMemory.mock.calls[0][3]).toMatchObject({ worldOnly: true })
+    expect(searchMemory).toHaveBeenCalledTimes(6)
+    for (const call of searchMemory.mock.calls) {
+      expect(call[3].worldOnly).toBe(true)
+      expect(call[3].subject).toBeUndefined()
+    }
   })
 
-  it('searches everything without a session key or in a non-group session', async () => {
-    const s = setup()
-    await (await s.manager({ agentId: 'main' })).search('q')
-    await (await s.manager(cron)).search('q')
-    await (await s.manager(dm)).search('q')
+  it('returns hits in the host shape and reads maxResults', async () => {
+    searchMemory.mockResolvedValue([{ id: 'n1', content: 'plays on hard', similarity: 0.8, context: 'c', tags: ['t'] }])
+    const m = await setup().manager({ agentId: 'main' })
+    const hits = await m.search('q', { maxResults: 3 })
 
-    for (const call of searchMemory.mock.calls) expect(call[3].worldOnly).toBe(false)
+    expect(searchMemory.mock.calls[0][1]).toBe(3)
+    expect(hits).toEqual([
+      { path: 'amem/n1', startLine: 1, endLine: 1, score: 0.8, snippet: 'plays on hard', source: 'memory' },
+    ])
+  })
+
+  it('still reads limit and topK, and asks for five by default', async () => {
+    const m = await setup().manager({ agentId: 'main' })
+    await m.search('q', { limit: 2 })
+    await m.search('q')
+
+    expect(searchMemory.mock.calls.map((c) => c[1])).toEqual([2, 5])
   })
 })
 

@@ -158,9 +158,11 @@ caller that passes a `subject` still wins. The plugin's tool never passes one in
 group.
 
 The plugin sets it on every read that runs in a group session: the `memory_search`
-tool, `manager.search` of the memory capability (from the `sessionKey` the host
-passes to `getMemorySearchManager`), and the candidate search that auto-capture runs
-before it decides what to save. The plugin has no prompt-injection recall hook.
+tool and the candidate search that auto-capture runs before it decides what to save.
+The plugin has no prompt-injection recall hook. `manager.search` of the memory
+capability sets it on every call, in any session: the host passes
+`getMemorySearchManager` only the config and the agent id, so the plugin cannot tell
+who is asking.
 Cron, heartbeat and CLI runs have no group session key and are unchanged: an
 unscoped search still sees everything, including notes tagged in direct chats. A
 group routed into the main session with `session.groupScope: "main"` is not
@@ -182,9 +184,8 @@ speaker key is allowed, in a group none. That is the whole check. In runs with n
 sender (cron, heartbeat, CLI) a model can still search for, or add to, any person's
 key, and a note added that way folds into that person's note when the text is close.
 A note without subjects is visible to everyone. `manager.search` of the memory
-capability, which host consumers such as memory-wiki call, passes no subject: it
-searches only notes without subjects in a group session, and every note otherwise,
-so in a direct chat it is unscoped. A group routed into the main session
+capability, which host consumers such as memory-wiki call, returns only notes
+without subjects, even on a single-user install. A group routed into the main session
 (`session.groupScope: "main"`) is not detected as a group. OpenClaw
 itself does not treat a session as a security boundary. Notes captured before this
 behaviour are untagged and stay visible to everyone.

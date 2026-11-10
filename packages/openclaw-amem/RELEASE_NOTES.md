@@ -5,6 +5,18 @@ what ClawHub shows on the listing. [CHANGELOG.md](./CHANGELOG.md) covers the
 same releases at the engine level. It is generated from changesets and is the
 format that npm uses.
 
+## 2.1.11
+
+**Memory tools that OpenClaw itself calls now see only general memories.**
+OpenClaw's own tools, such as the memory wiki, search your memories through a
+separate path. That path does not tell the plugin who is talking. It now returns
+only memories that are not about one person, in every chat, even if you are the
+only user. Before, these tools could find any person's memories in a direct
+chat. The results also came back in a form that OpenClaw could not read, so the
+memory wiki failed when its search included memories. Both are fixed.
+
+Update the plugin. Restart the gateway.
+
 ## 2.1.10
 
 **The agent can no longer search or save memories for someone other than the
