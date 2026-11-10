@@ -64,7 +64,7 @@ export async function listRetiredCommand(scope: AgentScope, opts: { limit?: stri
     return
   }
   for (const n of notes) {
-    io.write(`${n.id}  ${n.retired_at || '(before 2.1.11)'}  ${n.retired_by || '-'}  ${snippet(n.content)}`)
+    io.write(`${n.id}  ${n.retired_at || '(before 2.2.0)'}  ${n.retired_by || '-'}  ${snippet(n.content)}`)
   }
 }
 
@@ -74,7 +74,7 @@ export async function restoreCommand(scope: AgentScope, id: string, opts: { yes?
     io.write(`${id} is not retired.`)
     return
   }
-  io.write(`${id}  retired ${note.retired_at || 'before 2.1.11'} by ${note.retired_by || 'an unknown path'}`)
+  io.write(`${id}  retired ${note.retired_at || 'before 2.2.0'} by ${note.retired_by || 'an unknown path'}`)
   if (note.retire_reason) io.write(`reason: ${snippet(note.retire_reason, 200)}`)
   io.write(`text: ${snippet(note.content, 200)}`)
   if (!(await confirmed(io, 'Restore this memory? [y/N] ', opts.yes))) {

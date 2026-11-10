@@ -67,6 +67,11 @@ describe('invalidateNote', () => {
     expect(Date.parse(payload.retired_at)).not.toBeNaN()
   })
 
+  it('still takes the two arguments of 2.1.x, and records no path', async () => {
+    expect(await ctx().invalidateNote(ID, 'agentA')).toBe(true)
+    expect(payloadWrites()[0]).toMatchObject({ is_active: false, retired_by: '', retire_reason: '' })
+  })
+
   it('writes nothing for a caller that may not write the note', async () => {
     expect(await ctx().invalidateNote(ID, 'mallory', 'crud-delete')).toBe(false)
     expect(payloadWrites()).toEqual([])

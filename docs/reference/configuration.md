@@ -103,7 +103,7 @@ that names the plugin.
 
 Every retirement records `retired_at`, `retired_by` and `retire_reason` on the note.
 `retired_by` is one of `crud-delete`, `crud-retag`, `conflict-sweep`, `merge` and
-`consolidate`. Notes retired before 2.1.11 have none of them.
+`consolidate`. Notes retired before 2.2.0 have none of them.
 
 ```bash
 openclaw amem retired [--agent <id>] [--limit <n>] [--json]

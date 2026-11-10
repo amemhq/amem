@@ -1,6 +1,6 @@
 ---
-'@amemhq/core': patch
-'openclaw-amem': patch
+'@amemhq/core': minor
+'openclaw-amem': minor
 ---
 
 agent_end now rewrites a note only with authority from outside the model, and
@@ -16,13 +16,13 @@ version: 2. Only the audience kind is read: the hook runs after the turn
 released the audience, so assertMemoryAudienceCurrent throws there.
 
 New `crudRetire` (off | auto, default off) governs DELETE and the retag path.
-invalidateNote takes the retiring path and a reason and records retired_at,
-retired_by and retire_reason; every engine caller passes them. New restoreNote,
-listRetired and revertNote, exposed as `openclaw amem retired`, `restore` and
-`revert` through registerCli and manifest cliCommands. restoreNote clears
-pending_merge, which the nightly EVOLVE/EXPAND path leaves set, and records
-restored_at; conflictSweep in auto mode marks a restored note but does not
-retire it again.
+invalidateNote takes an optional retiring path and reason and records
+retired_at, retired_by and retire_reason; every engine caller passes them. New
+restoreNote, listRetired and revertNote, exposed as `openclaw amem retired`,
+`restore` and `revert` through registerCli and manifest cliCommands. restoreNote
+clears pending_merge, which the nightly EVOLVE/EXPAND path leaves set, and
+records restored_at; conflictSweep in auto mode marks a restored note but does
+not retire it again.
 
 llmCall takes an optional system message. All seven internal prompts send their
 rules there and the conversation or note text as an escaped data block in the

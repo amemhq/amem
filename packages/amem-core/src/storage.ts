@@ -1056,12 +1056,20 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       })
     },
 
-    /** Story 33: see `updateNoteContent` — returns false, unwritten, when denied. */
-    async invalidateNote(id: string, caller: string, by: RetiredBy, reason = ''): Promise<boolean> {
+    /**
+     * Story 33: see `updateNoteContent` — returns false, unwritten, when denied. `by` is optional
+     * so a caller written for 2.1.x still compiles; such a note records an empty retired_by.
+     */
+    async invalidateNote(id: string, caller: string, by?: RetiredBy, reason = ''): Promise<boolean> {
       await ensureCollection(col)
       if (caller !== SYSTEM_ACTOR && !(await writableNote(id, caller))) return false
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
-        payload: { is_active: false, retired_at: new Date().toISOString(), retired_by: by, retire_reason: reason },
+        payload: {
+          is_active: false,
+          retired_at: new Date().toISOString(),
+          retired_by: by ?? '',
+          retire_reason: reason,
+        },
         points: [id],
       })
       return true
@@ -1230,7 +1238,7 @@ export async function deleteNote(id: string): Promise<void> {
   return makeCrud(getCollection()).deleteNote(id)
 }
 
-export async function invalidateNote(id: string, caller: string, by: RetiredBy, reason = ''): Promise<boolean> {
+export async function invalidateNote(id: string, caller: string, by?: RetiredBy, reason = ''): Promise<boolean> {
   return makeCrud(getCollection()).invalidateNote(id, caller, by, reason)
 }
 
